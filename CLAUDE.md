@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Last Updated: 2026-03-27
+Last Updated: 2026-04-01
 
 ## Project Overview
 
@@ -24,13 +24,16 @@ The jar is self-contained (shade plugin bundles all dependencies).
 
 ### Run — simulator mode (no hardware required)
 
-Starts the controller and a full in-process simulator together:
-
 ```bash
 java -cp target/mse-controller-1.0-SNAPSHOT.jar \
      mse.simulator.Simulator \
      sample-topology.json config.properties
 ```
+
+### Run — mixed mode (one real node + rest simulated)
+
+Set `hardware.nodes=<node_id>` in `config.properties`. The simulator skips those node IDs so
+real hardware packets and simulated packets don't duplicate each other at the controller.
 
 ### Run — hardware mode (ESP32 gateway on serial)
 
@@ -40,7 +43,7 @@ java -jar target/mse-controller-1.0-SNAPSHOT.jar \
 ```
 
 The manifest main class is `mse.controller.Controller`. If the configured serial port is absent,
-`SerialBridge` silently disables itself so the controller still runs (useful alongside simulator).
+`SerialBridge` silently disables itself so the controller still runs.
 
 ### Run — topology tooling CLIs
 
@@ -63,7 +66,7 @@ java -cp target/mse-controller-1.0-SNAPSHOT.jar \
 | `mse` | `Node`, `Exit`, `Graph`, `PathCandidate` | Core domain model and pathfinding |
 | `mse.topology` | `TopologyLoader`, `TopologyValidator`, `TopologyGenerator` | JSON topology I/O and CLI tools |
 | `mse.controller` | `Controller`, `NodeState`, `SerialBridge`, `HeartbeatService`, `PathComputationService` | Runtime controller and serial comms |
-| `mse.dashboard` | `DashboardServer` | Embedded Jetty web dashboard |
+| `mse.dashboard` | `SwingDashboard` | Swing desktop dashboard |
 | `mse.distress` | `DistressHandler`, `DistressRecord` | Distress signal handling and notification |
 | `mse.simulator` | `Simulator`, `SimNode`, `ScenarioRunner` | In-process hardware simulator |
 
@@ -98,7 +101,7 @@ Dijkstra uses `System.identityHashCode` as the node identity key in the PQ (stor
 
 1. Load `topology.json` → build `Graph` + `NodeState` map
 2. Validate heartbeat timing: `node.timeout.ms > 2 × heartbeat.interval.ms` (enforced on startup, fatal if violated)
-3. Start `SerialBridge`, `HeartbeatService`, `PathComputationService`, `DashboardServer`
+3. Start `SerialBridge`, `HeartbeatService`, `PathComputationService`, `DistressHandler`
 4. Start node-timeout watchdog thread
 
 ### Packet protocol (newline-delimited JSON over serial)
@@ -110,6 +113,19 @@ Dijkstra uses `System.identityHashCode` as the node identity key in the PQ (stor
 | `distress` | Node → Controller | Occupant pressed distress button |
 | `path_push` | Controller → Node | Computed next-hop for evacuation routing |
 | `distress_ack` | Controller → Node | Acknowledges distress receipt |
+
+### Gateway node
+
+The gateway ESP32 serves a dual role: serial bridge to the controller, and a full mesh node with
+its own sensors and exit light. It must be listed in `topology.json` as a normal node. It sends
+both `heartbeat_ack` (bridge role) and `routing` packets (node role), and receives `path_push`
+like any other node.
+
+### Mixed hardware + simulator
+
+`hardware.nodes` in `config.properties` lists node IDs handled by real hardware
+(comma-separated). `Simulator` skips creating `SimNode`s for those IDs, so the controller
+receives exactly one stream of packets per node regardless of source.
 
 ### Simulator in-process wiring
 
@@ -123,20 +139,16 @@ direct neighbors so they can update their gossip table (mesh fallback mode).
 
 ### Dashboard
 
-Embedded Jetty server (default port 8080):
-- `GET /` — `dashboard.html` (served from classpath)
-- `GET /api/state` — JSON array of all `NodeState` objects
-- `GET /api/events` — SSE stream; pushed on every path recomputation
-- `GET /api/distress` — JSON array of recent distress events
+`SwingDashboard` opens a Swing JFrame automatically on controller start. It updates on every path
+recomputation. Requires a display server — on WSL, enable WSLg or run from Windows PowerShell.
 
 ### Distress handling
 
 `DistressHandler` on receiving a `distress` packet:
 1. Appends a JSON-Lines entry to `distress-log.jsonl`
-2. Sends SMS via Twilio (if credentials configured)
+2. Sends SMS via Twilio REST API (direct `HttpClient` POST — no Twilio SDK)
 3. HTTP POSTs to `api.endpoint` (if configured)
-4. Failed notifications enter a retry queue, persisted to `distress-retry-queue.json` across
-   restarts
+4. Failed notifications enter a retry queue, persisted to `distress-retry-queue.json` across restarts
 
 ## Directory Structure
 
@@ -158,7 +170,7 @@ MSE/
     │   ├── HeartbeatService.java    # Periodic heartbeat + gateway reachability
     │   └── PathComputationService.java  # Scheduled Dijkstra + broadcast
     ├── dashboard/
-    │   └── DashboardServer.java     # Embedded Jetty web UI + SSE
+    │   └── SwingDashboard.java      # Swing desktop dashboard
     ├── distress/
     │   ├── DistressHandler.java     # SMS/HTTP notification + retry queue
     │   └── DistressRecord.java      # Distress event value object
@@ -180,7 +192,7 @@ MSE/
 | `heartbeat.interval.ms` | `5000` | How often to send heartbeat pings |
 | `node.timeout.ms` | `20000` | Node marked offline after this idle period (must be > 2x heartbeat) |
 | `broadcast.interval.ms` | `3000` | Minimum interval between path-push broadcasts |
-| `dashboard.port` | `8080` | HTTP port for the web dashboard |
+| `hardware.nodes` | _(blank)_ | Comma-separated node IDs on real hardware (simulator skips these) |
 | `sms.recipients` | _(blank)_ | Comma-separated phone numbers for distress SMS |
 | `api.endpoint` | _(blank)_ | HTTP POST endpoint for distress notifications |
 | `api.timeout.ms` | `5000` | Timeout for external API calls |
@@ -230,17 +242,12 @@ concurrently via `ScheduledExecutorService`.
 | Library | Version | Use |
 |---|---|---|
 | Gson | 2.10.1 | JSON serialization/deserialization |
-| Jetty Server | 11.0.18 | Embedded HTTP server for dashboard |
-| Jetty Servlet | 11.0.18 | Servlet API for dashboard endpoints |
 | jSerialComm | 2.10.4 | Cross-platform USB serial communication |
-| Twilio SDK | 9.14.0 | SMS distress notifications |
 
 Java target: 17.
 
 ## Known Issues / TODOs
 
-- `cellular.fallback.enabled` is wired into config but the cellular fallback path is not yet
-  implemented.
+- `cellular.fallback.enabled` is wired into config but the cellular fallback path is not yet implemented.
 - `SwingDashboard` requires a display server. On WSL, enable WSLg (`wsl --update` in PowerShell)
-  or run the jar from Windows PowerShell directly. `DashboardServer.java` (Jetty/web) is retained
-  in the codebase if a browser-based fallback is needed.
+  or run the jar from Windows PowerShell directly.

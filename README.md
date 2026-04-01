@@ -8,9 +8,9 @@ continuously and pushes updated next-hop instructions to every node.
 ```
 [ESP32 node]──ESP-NOW──[ESP32 node]──ESP-NOW──[ESP32 gateway]──USB serial──[Raspberry Pi controller]
      │                      │                        │                              │
-  sensors               sensors                  serial bridge               path computation
-  exit light            exit light                                           desktop dashboard
-  help button           help button                                          distress alerts
+  sensors               sensors                  sensors + bridge            path computation
+  exit light            exit light               exit light                  desktop dashboard
+  help button           help button              help button                 distress alerts
 ```
 
 ---
@@ -24,7 +24,7 @@ java -cp target/mse-controller-1.0-SNAPSHOT.jar \
      sample-topology.json config.properties
 ```
 
-A desktop window opens automatically showing the live node table and distress alerts.
+A desktop window opens showing the live node table and distress alerts.
 
 ---
 
@@ -52,7 +52,7 @@ local routing using gossip from its direct neighbors:
 
 Pressing the help button on a node sends a `distress` packet to the controller, which:
 1. Logs the event to `distress-log.jsonl`
-2. Sends an SMS alert via Twilio (if configured)
+2. Sends an SMS alert via Twilio REST API (if credentials configured)
 3. HTTP POSTs to an external endpoint (if configured)
 4. Retries failed notifications automatically; persists the retry queue across restarts
 
@@ -62,7 +62,7 @@ Pressing the help button on a node sends a `distress` packet to the controller, 
 
 > **WSL users:** the Swing window requires a display server. Enable WSLg (`wsl --update` in
 > PowerShell, then restart WSL), or run the jar from Windows PowerShell directly pointing at the
-> jar under `\\wsl$\Ubuntu\home\...\PathFinder\target\`.
+> jar under `\\wsl$\Ubuntu\home\...\target\`.
 
 ### Simulator mode (development / demo)
 
@@ -74,16 +74,25 @@ java -cp target/mse-controller-1.0-SNAPSHOT.jar \
      sample-topology.json config.properties
 ```
 
-### Hardware mode (Raspberry Pi with real nodes)
+### Mixed mode (one real node + rest simulated)
+
+Set `hardware.nodes` in `config.properties` to the real node's ID. The simulator skips that node
+so the controller receives real packets from hardware and simulated packets for everything else:
+
+```properties
+hardware.nodes=1A
+serial.port=/dev/ttyUSB0
+```
+
+### Hardware mode (all real nodes)
 
 ```bash
 java -jar target/mse-controller-1.0-SNAPSHOT.jar \
      topology.json config.properties
 ```
 
-Set `serial.port` in `config.properties` to the gateway's USB serial device (e.g. `/dev/ttyUSB0`).
-If the port is absent, the serial bridge disables itself gracefully so the rest of the system
-still runs.
+If the serial port is absent, the serial bridge disables itself gracefully so the rest of the
+system still runs.
 
 ### Fire scenario demo
 
@@ -95,7 +104,72 @@ ScenarioRunner runner = new ScenarioRunner(simulator, Path.of("sample-scenario.j
 runner.start();
 ```
 
-Watch the dashboard window as routes reroute around the blocked nodes.
+---
+
+## Gateway Node
+
+The gateway ESP32 is both the serial bridge **and** a full mesh node. It should:
+- Send `heartbeat_ack` in response to every `heartbeat` from the controller
+- Send `routing` packets with its own sensor readings like any other node
+- Receive `path_push` packets and drive its own exit light
+
+Add the gateway to `topology.json` as a normal node entry.
+
+---
+
+## Serial Packet Protocol
+
+All packets are newline-delimited JSON over USB serial.
+
+### Node → Controller
+
+**`routing`** — periodic sensor report
+```json
+{
+  "type": "routing",
+  "node_id": "1A",
+  "is_passable": true,
+  "temperature": 24.5,
+  "co2": 0.12,
+  "distance": 7.5,
+  "sensor_error": false,
+  "topology_crc32": "a1b2c3d4"
+}
+```
+
+**`heartbeat_ack`** — gateway replies to every heartbeat ping
+```json
+{"type":"heartbeat_ack"}
+```
+
+**`distress`** — occupant pressed help button
+```json
+{
+  "type": "distress",
+  "node_id": "1A",
+  "seq": 3,
+  "floor": 1,
+  "location_label": "Main Corridor West",
+  "timestamp_ms": 1234567890
+}
+```
+
+### Controller → Node
+
+**`heartbeat`** — sent every `heartbeat.interval.ms`
+```json
+{"type":"heartbeat","timestamp_ms":1234567890}
+```
+
+**`path_push`** — computed next hop; node points exit arrow toward `next_hop_id`
+```json
+{"type":"path_push","node_id":"1A","next_hop_id":"1B","path_distance":7.5}
+```
+
+**`distress_ack`** — acknowledges a distress button press
+```json
+{"type":"distress_ack","node_id":"1A","seq":3,"timestamp_ms":1234567890}
+```
 
 ---
 
@@ -195,7 +269,7 @@ Impassable nodes are highlighted red. Active distress alerts appear in the panel
 | `heartbeat.interval.ms` | `5000` | Heartbeat ping interval |
 | `node.timeout.ms` | `20000` | Node marked offline after this idle period (must be > 2× heartbeat) |
 | `broadcast.interval.ms` | `3000` | Minimum interval between Dijkstra reruns |
-| `dashboard.port` | `8080` | Web dashboard port |
+| `hardware.nodes` | _(blank)_ | Comma-separated node IDs handled by real hardware (simulator skips these) |
 | `sms.recipients` | _(blank)_ | Comma-separated phone numbers for distress SMS |
 | `api.endpoint` | _(blank)_ | HTTP POST URL for distress notifications |
 | `api.timeout.ms` | `5000` | External API call timeout |
@@ -218,7 +292,7 @@ MSE/
 └── src/main/java/mse/
     ├── Node.java / Exit.java / Graph.java / PathCandidate.java   # Core domain
     ├── controller/              # Controller, serial bridge, heartbeat, path computation
-    ├── dashboard/               # Embedded Jetty web UI + SSE
+    ├── dashboard/               # Swing desktop dashboard
     ├── distress/                # Distress event handling, SMS/HTTP notification, retry queue
     ├── simulator/               # In-process ESP32 simulator + scenario runner
     └── topology/                # Topology loader, validator, interactive generator
@@ -231,8 +305,6 @@ MSE/
 | Library | Version |
 |---|---|
 | Gson | 2.10.1 |
-| Jetty | 11.0.18 |
 | jSerialComm | 2.10.4 |
-| Twilio SDK | 9.14.0 |
 
 Java 17 required.
