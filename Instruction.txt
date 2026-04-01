@@ -1,0 +1,18 @@
+Step 1: Construct topology
+
+Write `building.json` that represents nodes.
+1. Open powershell or cmd, enter the location you saved `mse.jar`, run 
+   `java -cp mse.jar mse.topology.TopologyGenerator`
+   to start topology generator.
+2. Enter `building.json`. (If file does not exist, it will be automatically created under the same directory.)
+3. Enter `node`, add all nodes with id, floor, location label, and whether it's an exit or not.
+4. Enter `edge`, add all edges with endnodes, weights (distances), and direction.
+5. Run
+   `java -cp mse.jar mse.topology.TopologyValidator building.json`
+   to see if the topology is valid. Exits 0 if clean. Will catch asymmetric edges, missing references, duplicate IDs.
+You may stop/restart the generator anytime. Successfully written nodes and edges are auto saved.
+
+
+Step 2: Add a real node to topology
+
+Select a node (preferably an intersection) in `building.json`, set the real MAC address.

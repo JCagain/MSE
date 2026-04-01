@@ -5,11 +5,12 @@ Each node senses temperature and CO₂, reports to the controller over USB seria
 exit-light display showing the nearest safe escape route. The controller runs multi-source Dijkstra continuously and pushes updated next-hop instructions to every node.
 
 ```
-[ESP32 node]──ESP-NOW──[ESP32 node]──ESP-NOW──[ESP32 gateway]──USB serial──[Controller]
-     │                      │                        │                              │
-  sensors               sensors                  sensors + bridge            path computation
-  exit light            exit light               exit light                  desktop dashboard
-  help button           help button              help button                 distress alerts
+                 Simulated                     |              Real
+[ESP32 node]──ESP-NOW──[ESP32 node]──ESP-NOW── | ——[ESP32 gateway]──USB serial──[Controller]
+     │                      │                  |        │                              │
+  sensors               sensors                |    sensors + bridge            path computation
+  exit light            exit light             |    exit light                  desktop dashboard
+  help button           help button            |    help button                 distress alerts
 ```
 
 ---
@@ -61,7 +62,7 @@ Simulator: Acts as virtual ESP32 nodes. The simulator and real hardware can run 
 
 ### TODO
 
-1. Write JSON based on real building planes
+1. Write JSON topology based on real building planes
 2. The ESP32 gateway node:
 A. **Read sensors** — temperature and CO₂ at regular intervals
 B. **Send `routing` packets** over USB serial to report its state
@@ -135,7 +136,7 @@ Write `main-lib.json` that represents nodes.
    to see if the topology is valid. Exits 0 if clean. Will catch asymmetric edges, missing references, duplicate IDs.
 You may stop/restart the generator anytime. Successfully written nodes and edges are auto saved.
 
-Alternative approach: Manually editing with reference to `sample-topology.json`.
+Alternative approach: Manually edit (for examples, see `sample-topology.json`).
 
 
 **Step 2: Add a real node to topology**

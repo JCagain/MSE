@@ -1,0 +1,68 @@
+# Implementation
+(Regularly)
+    ESP32                          Controller(done)
+reads sensor      --routing-->     calculate route
+confirm recieve  <--path_push--     send direction
+                  --path_ack-->         
+
+(When help button is pressed)
+    ESP32                          Controller(done)
+button pushed     --distress-->    confirm receive
+reflect endpoint <--distress_ack--
+
+All communication at 115200 baud over USB serial. 
+One JSON object per line.
+
+
+
+# TODO
+
+1. Write JSON topology based on real building planes （彭嘉宇在做）
+2. Set passibility thresholds and timing:
+   node.timeout.ms=
+   broadcast.interval.ms=
+   passability.temperature.threshold=
+   passability.gas.threshold=
+3. ESP32 firmware: Read sensor, decide passibility, send packets, receive packets
+
+
+
+# Serial protocol example
+
+**You send → controller:**
+
+```json
+// Periodic sensor report (send every few seconds)
+{
+  "type": "routing",
+  "node_id": "1A",
+  "is_passable": true,
+  "temperature": 24.5,
+  "co2": 0.12,
+  "sensor_error": false
+}
+
+// Reply to every path_push
+{"type": "path_ack"}
+
+// When help button is pressed
+//`seq` should increment by 1 on each button press so the controller can detect duplicates.
+{
+  "type": "distress",
+  "node_id": "1A",
+  "seq": 1,
+  "floor": 1,
+  "location_label": "Main Corridor West",
+  "timestamp_ms": 1234567890
+}
+```
+
+**Controller sends → you:**
+
+```json
+// Pointing direction
+{"type": "path_push", "node_id": "1A", "next_hop_id": "1B", "path_distance": 7.5}
+
+// Acknowledgement of your distress button press
+{"type": "distress_ack", "node_id": "1A", "seq": 1, "timestamp_ms": 1234567890}
+```
