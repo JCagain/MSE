@@ -3,7 +3,6 @@ package mse.controller;
 import com.google.gson.JsonObject;
 import mse.Graph;
 import mse.Node;
-import mse.dashboard.DashboardServer;
 import mse.distress.DistressHandler;
 import mse.distress.DistressRecord;
 import mse.topology.TopologyLoader;
@@ -24,7 +23,7 @@ import java.util.logging.Logger;
  * Startup sequence:
  *   1. Load topology.json → build Graph + NodeState map
  *   2. Validate heartbeat timing constraint
- *   3. Start SerialBridge, HeartbeatService, PathComputationService, DashboardServer
+ *   3. Start SerialBridge, HeartbeatService, PathComputationService, DistressHandler
  *   4. Start node-timeout watchdog
  *
  * Packet routing (from serial or in-process simulator):
@@ -44,7 +43,6 @@ public class Controller {
     private final PathComputationService pathService;
     private final DistressHandler distressHandler;
     private final ScheduledExecutorService watchdog;
-    private DashboardServer dashboard;
 
     /** Functional interface for in-process packet delivery from Simulator → Controller. */
     public interface PacketSink {
@@ -115,10 +113,6 @@ public class Controller {
         long nodeTimeoutMs = longProp("node.timeout.ms", 20000);
         watchdog.scheduleAtFixedRate(
             this::checkNodeTimeouts, nodeTimeoutMs, nodeTimeoutMs, TimeUnit.MILLISECONDS);
-
-        int dashPort = (int) longProp("dashboard.port", 8080);
-        dashboard = new DashboardServer(this, dashPort);
-        try { dashboard.start(); } catch (Exception e) { LOG.warning("Dashboard failed to start: " + e.getMessage()); }
 
         distressHandler.start();
 
@@ -217,7 +211,6 @@ public class Controller {
             serial.send(push);
             if (simulatorSink != null) simulatorSink.deliver(push);
         }
-        if (dashboard != null) dashboard.push();
     }
 
     // --- Node timeout watchdog ---

@@ -139,29 +139,43 @@ public class DistressHandler {
         String from  = config.getProperty("twilio.from.number",  "").trim();
         if (sid.isBlank() || token.isBlank() || from.isBlank()) {
             LOG.fine("Twilio credentials not configured — skipping SMS");
-            return true;   // not a failure; channel simply isn't active
-        }
-        try {
-            com.twilio.Twilio.init(sid, token);
-            String body = "[MSE DISTRESS] Node " + record.nodeId
-                + "  Floor " + record.floor
-                + "  " + record.locationLabel
-                + "  seq=" + record.seq;
-            for (String rawNumber : numbers) {
-                String to = rawNumber.trim();
-                if (to.isBlank()) continue;
-                com.twilio.rest.api.v2010.account.Message.creator(
-                    new com.twilio.type.PhoneNumber(to),
-                    new com.twilio.type.PhoneNumber(from),
-                    body
-                ).create();
-                LOG.info("SMS sent to " + to);
-            }
             return true;
-        } catch (Exception e) {
-            LOG.warning("SMS send failed: " + e.getMessage());
-            return false;
         }
+        String body = "[MSE DISTRESS] Node " + record.nodeId
+            + "  Floor " + record.floor
+            + "  " + record.locationLabel
+            + "  seq=" + record.seq;
+        String url = "https://api.twilio.com/2010-04-01/Accounts/" + sid + "/Messages.json";
+        String auth = java.util.Base64.getEncoder()
+            .encodeToString((sid + ":" + token).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        boolean allOk = true;
+        for (String rawNumber : numbers) {
+            String to = rawNumber.trim();
+            if (to.isBlank()) continue;
+            try {
+                String form = "To=" + java.net.URLEncoder.encode(to, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&From=" + java.net.URLEncoder.encode(from, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&Body=" + java.net.URLEncoder.encode(body, java.nio.charset.StandardCharsets.UTF_8);
+                HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofMillis(longProp("api.timeout.ms", 5000)))
+                    .header("Authorization", "Basic " + auth)
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(form))
+                    .build();
+                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
+                    LOG.info("SMS sent to " + to);
+                } else {
+                    LOG.warning("SMS to " + to + " failed: HTTP " + resp.statusCode());
+                    allOk = false;
+                }
+            } catch (Exception e) {
+                LOG.warning("SMS to " + to + " failed: " + e.getMessage());
+                allOk = false;
+            }
+        }
+        return allOk;
     }
 
     private boolean httpPost(DistressRecord record, String endpoint) {
