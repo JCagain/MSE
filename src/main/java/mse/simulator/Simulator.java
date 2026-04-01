@@ -51,7 +51,12 @@ public class Simulator {
             neighborMap.put(nj.nodeId, nids);
         }
 
+        Set<String> hwNodes = parseHwNodes(config);
         for (NodeJson nj : loaded.nodeJsons) {
+            if (hwNodes.contains(nj.nodeId)) {
+                LOG.info("Simulator skipping hardware node: " + nj.nodeId);
+                continue;
+            }
             nodes.put(nj.nodeId, new SimNode(
                 nj, broadcastIntervalMs, this::toController,
                 totalNodeCount, meshFallbackPct));
@@ -127,6 +132,15 @@ public class Simulator {
     }
 
     // --- Helpers ---
+
+    private static Set<String> parseHwNodes(Properties config) {
+        String val = config.getProperty("hardware.nodes", "").trim();
+        if (val.isBlank()) return Set.of();
+        return Arrays.stream(val.split(","))
+            .map(String::trim)
+            .filter(s -> !s.isBlank())
+            .collect(Collectors.toSet());
+    }
 
     private static long longProp(Properties p, String key, long def) {
         String val = p.getProperty(key);
