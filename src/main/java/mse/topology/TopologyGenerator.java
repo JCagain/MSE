@@ -108,9 +108,7 @@ public class TopologyGenerator {
         if (id.isEmpty())              { System.out.println("  node_id cannot be empty."); return false; }
         if (byId.containsKey(id))      { System.out.println("  Node already exists: " + id); return false; }
 
-        System.out.print("  mac_address (e.g. AA:BB:CC:DD:EE:01): ");
-        String mac = sc.nextLine().trim();
-        if (mac.isEmpty())             { System.out.println("  mac_address cannot be empty."); return false; }
+        String mac = generateMac();
 
         System.out.print("  floor: ");
         int floor;
@@ -134,7 +132,7 @@ public class TopologyGenerator {
         nj.neighbors = new ArrayList<>();
         topology.nodes.add(nj);
         byId.put(id, nj);
-        System.out.println("  Added node: " + id);
+        System.out.println("  Added node: " + id + "  mac=" + mac);
         return true;
     }
 
@@ -198,6 +196,16 @@ public class TopologyGenerator {
     // -------------------------------------------------------------------------
     // Save helpers
     // -------------------------------------------------------------------------
+
+    private static final Random RNG = new Random();
+
+    private static String generateMac() {
+        byte[] b = new byte[6];
+        RNG.nextBytes(b);
+        b[0] = (byte) (b[0] & 0xFE & 0xFC); // clear multicast + locally-administered bits
+        return String.format("%02X:%02X:%02X:%02X:%02X:%02X",
+            b[0], b[1], b[2], b[3], b[4], b[5]);
+    }
 
     private static void autoSave(TopologyJson topology, String filename) {
         try {
