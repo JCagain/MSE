@@ -36,9 +36,15 @@ public class SerialBridge {
     }
 
     public void start() {
-        port = SerialPort.getCommPort(portName);
+        try {
+            port = SerialPort.getCommPort(portName);
+        } catch (Exception e) {
+            LOG.warning("Serial port not available: " + portName
+                + " — running in serial-disabled mode");
+            return;
+        }
         if (!port.openPort()) {
-            LOG.warning("Serial port not found or could not be opened: " + portName
+            LOG.warning("Serial port could not be opened: " + portName
                 + " — running in serial-disabled mode");
             return;
         }
