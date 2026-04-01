@@ -1,0 +1,9 @@
+{
+  "description": "Fire starts at 1A, spreads toward 1C",
+  "steps": [
+    { "delay_ms": 3000,  "node_id": "1A", "temperature": 80.0, "co2": 0.1  },
+    { "delay_ms": 6000,  "node_id": "1C", "temperature": 70.0, "co2": 0.6  },
+    { "delay_ms": 10000, "node_id": "1A", "temperature": 25.0, "co2": 0.1  },
+    { "delay_ms": 13000, "node_id": "1C", "temperature": 25.0, "co2": 0.1  }
+  ]
+}
