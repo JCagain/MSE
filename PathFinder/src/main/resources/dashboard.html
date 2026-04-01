@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MSE — Emergency Exit Dashboard</title>
+<style>
+  body { font-family: monospace; background: #111; color: #ddd; padding: 1rem; }
+  h1 { color: #fff; margin-bottom: 0.5rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th { background: #222; color: #aaa; padding: 6px 10px; text-align: left; border-bottom: 2px solid #333; }
+  td { padding: 5px 10px; border-bottom: 1px solid #1e1e1e; }
+  tr.impassable td { background: #2a0000; }
+  tr.exit td { background: #001a08; }
+  tr.distress { outline: 2px solid orange; }
+  .badge { border-radius: 4px; padding: 2px 6px; font-size: 0.8em; }
+  .ok   { background: #1a3a1a; color: #6f6; }
+  .err  { background: #3a0000; color: #f55; }
+  #alerts { margin-top: 1.5rem; }
+  #alerts h2 { color: #fa0; margin-bottom: 0.5rem; }
+  .alert { background: #2a1200; border-left: 4px solid orange;
+           padding: 8px 12px; margin-bottom: 6px; border-radius: 2px; }
+  #status { float: right; font-size: 0.85em; color: #666; margin-top: 0.3rem; }
+</style>
+</head>
+<body>
+<h1>MSE Emergency Exit System <span id="status">connecting...</span></h1>
+
+<table>
+  <thead>
+    <tr>
+      <th>Node</th><th>Floor</th><th>Location</th>
+      <th>Passable</th><th>Temp (°C)</th><th>CO₂</th>
+      <th>Next Hop</th><th>Distance</th><th>Last Seen</th>
+    </tr>
+  </thead>
+  <tbody id="node-table"></tbody>
+</table>
+
+<div id="alerts">
+  <h2>Distress Alerts</h2>
+  <div id="alert-list" style="color:#666">(none)</div>
+</div>
+
+<script>
+  const table     = document.getElementById('node-table');
+  const alertList = document.getElementById('alert-list');
+  const statusEl  = document.getElementById('status');
+  const seenAlerts = new Set();
+
+  function render(nodes) {
+    table.innerHTML = nodes.map(n => {
+      const rowCls = n.isExit ? 'exit' : (!n.isPassable ? 'impassable' : '');
+      const disCls = n.distressActive ? 'distress' : '';
+      const badge  = n.isPassable
+        ? '<span class="badge ok">YES</span>'
+        : '<span class="badge err">NO</span>';
+      const ago    = n.lastSeenMs
+        ? Math.round((Date.now() - n.lastSeenMs) / 1000) + 's ago' : '—';
+      const dist   = n.computedDistance != null
+        ? n.computedDistance.toFixed(1) : '∞';
+      return `<tr class="${rowCls} ${disCls}">
+        <td>${n.nodeId}${n.isExit ? ' 🚪' : ''}</td>
+        <td>${n.floor}</td>
+        <td>${n.locationLabel}</td>
+        <td>${badge}</td>
+        <td>${n.temperature.toFixed(1)}</td>
+        <td>${n.co2.toFixed(2)}</td>
+        <td>${n.computedNextHop || '—'}</td>
+        <td>${dist}</td>
+        <td>${ago}</td>
+      </tr>`;
+    }).join('');
+
+    nodes.filter(n => n.distressActive).forEach(n => {
+      const key = n.nodeId;
+      if (!seenAlerts.has(key)) {
+        seenAlerts.add(key);
+        const div = document.createElement('div');
+        div.className = 'alert';
+        div.textContent = `⚠ DISTRESS — ${n.nodeId} (${n.locationLabel}) at ${new Date().toLocaleTimeString()}`;
+        alertList.prepend(div);
+        if (alertList.querySelector('div[style]')) alertList.querySelector('div[style]').remove();
+      }
+    });
+  }
+
+  function connect() {
+    const es = new EventSource('/api/events');
+    es.onopen    = () => { statusEl.textContent = 'live'; statusEl.style.color = '#6f6'; };
+    es.onmessage = e  => render(JSON.parse(e.data));
+    es.onerror   = () => {
+      statusEl.textContent = 'reconnecting...';
+      statusEl.style.color = '#fa0';
+      es.close();
+      setTimeout(connect, 3000);
+    };
+  }
+
+  fetch('/api/state').then(r => r.json()).then(render).catch(() => {});
+  connect();
+</script>
+</body>
+</html>
