@@ -1,0 +1,48 @@
+{
+  "nodes": [
+    {
+      "node_id": "1A",
+      "mac_address": "AA:BB:CC:DD:EE:01",
+      "floor": 1,
+      "location_label": "Main Corridor West",
+      "is_exit": false,
+      "neighbors": [
+        { "node_id": "1B", "edge_weight": 5.0, "direction": "right" },
+        { "node_id": "1C", "edge_weight": 3.0, "direction": "forward" }
+      ]
+    },
+    {
+      "node_id": "1B",
+      "mac_address": "AA:BB:CC:DD:EE:02",
+      "floor": 1,
+      "location_label": "Main Corridor East",
+      "is_exit": false,
+      "neighbors": [
+        { "node_id": "1A", "edge_weight": 5.0, "direction": "left" },
+        { "node_id": "1Exit-A", "edge_weight": 7.0, "direction": "forward" }
+      ]
+    },
+    {
+      "node_id": "1C",
+      "mac_address": "AA:BB:CC:DD:EE:03",
+      "floor": 1,
+      "location_label": "Side Corridor",
+      "is_exit": false,
+      "neighbors": [
+        { "node_id": "1A", "edge_weight": 3.0, "direction": "back" },
+        { "node_id": "1Exit-A", "edge_weight": 4.0, "direction": "right" }
+      ]
+    },
+    {
+      "node_id": "1Exit-A",
+      "mac_address": "AA:BB:CC:DD:EE:FF",
+      "floor": 1,
+      "location_label": "South Gate",
+      "is_exit": true,
+      "neighbors": [
+        { "node_id": "1B", "edge_weight": 7.0, "direction": "back" },
+        { "node_id": "1C", "edge_weight": 4.0, "direction": "left" }
+      ]
+    }
+  ]
+}
