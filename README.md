@@ -14,13 +14,28 @@ exit-light display showing the nearest safe escape route. The controller runs mu
 
 ---
 
+## Prerequisites
+
+Verify: `java -version` and `mvn -version`
+
+**Java 17+**
+- macOS: `brew install openjdk@17`
+- Windows: `winget install Microsoft.OpenJDK.17`
+- Linux: `sudo apt install openjdk-17-jdk`
+
+**Maven**
+- macOS: `brew install maven`
+- Windows: manually download from `https://maven.apache.org/download.cgi`
+- Linux: `sudo apt install maven`
+
+
+---
+
 ## Quick Start (no hardware required)
 
 ```bash
 mvn package -q
-java -cp target/mse-controller-1.0-SNAPSHOT.jar \
-     mse.simulator.Simulator \
-     sample-topology.json config.properties
+java -cp target/mse-controller-1.0-SNAPSHOT.jar mse.simulator.Simulator sample-topology.json config.properties
 ```
 
 A desktop window opens showing the live node table and distress alerts.
@@ -123,12 +138,12 @@ You may stop/restart the generator anytime. Successfully written nodes and edges
 Alternative approach: Manually editing with reference to `sample-topology.json`.
 
 
-**Step 2 — Add a real node to topology**
+**Step 2: Add a real node to topology**
 
 Select a node (preferably an intersection) in `main-lib.json`, set the real MAC address, and add the `node_id` to `hardware.nodes` at the end of `config.properties`.
 
 
-**Step 3 — Configure `config.properties`**
+**Step 3: Configure `config.properties`**
 
 1. Serial port
 - Linux/macOS — run `ls /dev/tty.* (macOS)` or `ls /dev/ttyUSB* /dev/ttyACM*` (Linux) before and after plugging in the ESP32; the new entry is your port
@@ -144,12 +159,10 @@ Then set it in config.properties, e.g.
    ```
 
 
-**Step 4 — Run in mixed mode**
+**Step 4: Run in mixed mode**
 
 ```bash
-java -cp target/mse-controller-1.0-SNAPSHOT.jar \
-     mse.simulator.Simulator \
-     sample-topology.json config.properties
+java -cp target/mse-controller-1.0-SNAPSHOT.jar mse.simulator.Simulator main-lib.json config.properties
 ```
 The physical node will talk to the controller over serial. All other nodes in the topology run as simulator instances. The dashboard will show both real and simulated nodes together.
 
