@@ -3,6 +3,7 @@ package mse.controller;
 import com.google.gson.JsonObject;
 import mse.Graph;
 import mse.Node;
+import mse.dashboard.SwingDashboard;
 import mse.distress.DistressHandler;
 import mse.distress.DistressRecord;
 import mse.topology.TopologyLoader;
@@ -43,6 +44,7 @@ public class Controller {
     private final PathComputationService pathService;
     private final DistressHandler distressHandler;
     private final ScheduledExecutorService watchdog;
+    private SwingDashboard dashboard;
 
     /** Functional interface for in-process packet delivery from Simulator → Controller. */
     public interface PacketSink {
@@ -115,6 +117,9 @@ public class Controller {
             this::checkNodeTimeouts, nodeTimeoutMs, nodeTimeoutMs, TimeUnit.MILLISECONDS);
 
         distressHandler.start();
+
+        dashboard = new SwingDashboard(this);
+        dashboard.start();
 
         LOG.info("Controller started. Nodes: " + nodeStates.size());
     }
@@ -211,6 +216,7 @@ public class Controller {
             serial.send(push);
             if (simulatorSink != null) simulatorSink.deliver(push);
         }
+        if (dashboard != null) dashboard.push();
     }
 
     // --- Node timeout watchdog ---
