@@ -3,7 +3,7 @@ package mse.controller;
 import com.google.gson.JsonObject;
 import mse.Graph;
 import mse.Node;
-import mse.dashboard.DashboardServer;
+import mse.dashboard.SwingDashboard;
 import mse.distress.DistressHandler;
 import mse.distress.DistressRecord;
 import mse.topology.TopologyLoader;
@@ -44,7 +44,7 @@ public class Controller {
     private final PathComputationService pathService;
     private final DistressHandler distressHandler;
     private final ScheduledExecutorService watchdog;
-    private DashboardServer dashboard;
+    private SwingDashboard dashboard;
 
     /** Functional interface for in-process packet delivery from Simulator → Controller. */
     public interface PacketSink {
@@ -116,13 +116,8 @@ public class Controller {
         watchdog.scheduleAtFixedRate(
             this::checkNodeTimeouts, nodeTimeoutMs, nodeTimeoutMs, TimeUnit.MILLISECONDS);
 
-        int dashPort = Integer.parseInt(config.getProperty("dashboard.port", "8080"));
-        dashboard = new DashboardServer(this, dashPort);
-        try {
-            dashboard.start();
-        } catch (Exception e) {
-            LOG.severe("Failed to start dashboard: " + e.getMessage());
-        }
+        dashboard = new SwingDashboard(this);
+        dashboard.start();
 
         distressHandler.start();
 
