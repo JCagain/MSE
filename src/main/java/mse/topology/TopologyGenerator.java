@@ -75,16 +75,20 @@ public class TopologyGenerator {
 
             Path path = Path.of(filename);
             if (Files.exists(path)) {
-                try {
-                    TopologyLoader.LoadResult result = TopologyLoader.load(path);
-                    for (NodeJson nj : result.nodeJsons) {
-                        topology.nodes.add(nj);
-                        byId.put(nj.nodeId, nj);
+                if (Files.size(path) == 0 || Files.readString(path).isBlank()) {
+                    System.out.println("  File is empty — starting new topology: " + filename);
+                } else {
+                    try {
+                        TopologyLoader.LoadResult result = TopologyLoader.load(path);
+                        for (NodeJson nj : result.nodeJsons) {
+                            topology.nodes.add(nj);
+                            byId.put(nj.nodeId, nj);
+                        }
+                        System.out.println("  Loaded " + topology.nodes.size() + " node(s) from " + filename);
+                    } catch (Exception e) {
+                        System.out.println("  Failed to load file: " + e.getMessage());
+                        continue;
                     }
-                    System.out.println("  Loaded " + topology.nodes.size() + " node(s) from " + filename);
-                } catch (Exception e) {
-                    System.out.println("  Failed to load file: " + e.getMessage());
-                    continue;
                 }
             } else {
                 System.out.println("  File not found — starting new topology: " + filename);
