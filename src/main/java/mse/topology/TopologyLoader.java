@@ -11,6 +11,7 @@ import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * Parses a topology.json file into a Graph of Node/Exit objects.
@@ -60,19 +61,30 @@ public class TopologyLoader {
     // --- Loader ---
 
     public static LoadResult load(Path topologyFile) throws IOException {
+        return load(topologyFile, new Properties());
+    }
+
+    public static LoadResult load(Path topologyFile, Properties config) throws IOException {
         Gson gson = new Gson();
         try (Reader reader = Files.newBufferedReader(topologyFile)) {
             TopologyJson topology = gson.fromJson(reader, TopologyJson.class);
-            return buildGraph(topology);
+            return buildGraph(topology, config);
         }
     }
 
-    private static LoadResult buildGraph(TopologyJson topology) {
+    private static LoadResult buildGraph(TopologyJson topology, Properties config) {
+        float tempThreshold = floatProp(config, "passability.temperature.threshold",
+            Node.DEFAULT_TEMPERATURE_THRESHOLD);
+        float gasThreshold  = floatProp(config, "passability.gas.threshold",
+            Node.DEFAULT_GAS_CONCENTRATION_THRESHOLD);
+
         Graph graph = new Graph();
 
         // Pass 1: create nodes
         for (NodeJson nj : topology.nodes) {
-            Node node = nj.isExit ? new Exit(nj.nodeId) : new Node(nj.nodeId, 0f, 0f);
+            Node node = nj.isExit
+                ? new Exit(nj.nodeId)
+                : new Node(nj.nodeId, 0f, 0f, tempThreshold, gasThreshold);
             graph.addNode(node);
         }
 
@@ -89,6 +101,13 @@ public class TopologyLoader {
         }
 
         return new LoadResult(graph, topology.nodes);
+    }
+
+    private static float floatProp(Properties p, String key, float def) {
+        String val = p.getProperty(key);
+        if (val == null || val.isBlank()) return def;
+        try { return Float.parseFloat(val.trim()); }
+        catch (NumberFormatException e) { return def; }
     }
 
     public static void main(String[] args) throws IOException {

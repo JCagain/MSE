@@ -78,7 +78,7 @@ public class Controller {
             System.exit(1);
         }
 
-        LoadResult loaded = TopologyLoader.load(topologyFile);
+        LoadResult loaded = TopologyLoader.load(topologyFile, config);
         this.graph      = loaded.graph;
         this.nodeStates = buildNodeStates(loaded.nodeJsons);
 
