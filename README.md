@@ -1,12 +1,11 @@
 # MSE — Emergency Exit System
 
-A distributed building-evacuation system built on ESP32 mesh nodes and a Raspberry Pi controller.
+A distributed building-evacuation system built on ESP32 mesh nodes and a controller.
 Each node senses temperature and CO₂, reports to the controller over USB serial, and drives an
-exit-light display showing the nearest safe escape route. The controller runs multi-source Dijkstra
-continuously and pushes updated next-hop instructions to every node.
+exit-light display showing the nearest safe escape route. The controller runs multi-source Dijkstra continuously and pushes updated next-hop instructions to every node.
 
 ```
-[ESP32 node]──ESP-NOW──[ESP32 node]──ESP-NOW──[ESP32 gateway]──USB serial──[Raspberry Pi controller]
+[ESP32 node]──ESP-NOW──[ESP32 node]──ESP-NOW──[ESP32 gateway]──USB serial──[Controller]
      │                      │                        │                              │
   sensors               sensors                  sensors + bridge            path computation
   exit light            exit light               exit light                  desktop dashboard
@@ -25,6 +24,137 @@ java -cp target/mse-controller-1.0-SNAPSHOT.jar \
 ```
 
 A desktop window opens showing the live node table and distress alerts.
+
+---
+
+## Hardware Integration Guide
+
+### What's done
+
+Controller:
+1. Initialzation: Loads a building topology (nodes, edges, exits) from a JSON file
+2. Path finding:
+- Tracks node passability from sensor readings (temp, CO₂)
+- Computes a route for every node
+- Pushes `path_push` packets to nodes telling which direction to point
+3. Handles the distress button: logs the event, sends SMS (not for real yet), retries on failure
+4. Shows a live desktop dashboard with the state of every node
+
+Simulator: Acts as virtual ESP32 nodes. The simulator and real hardware can run side by side.
+
+---
+
+### TODO
+
+1. Write JSON based on real building planes
+2. The ESP32 gateway node:
+A. **Read sensors** — temperature and CO₂ at regular intervals
+B. **Send `routing` packets** over USB serial to report its state
+C. **Respond to `heartbeat`** pings from the controller with a `heartbeat_ack`
+D. **Send `distress` packets** when the help button is pressed
+E. **Receive `path_push` packets** and drive the exit light in the indicated direction
+F. **Bridge the mesh** — forward packets between the ESP-NOW mesh and the USB serial link (for future nodes)
+
+---
+
+### Serial protocol
+
+All communication is **newline-delimited JSON at 115200 baud** over USB serial. One JSON object per line.
+
+**You send → controller:**
+
+```json
+// Periodic sensor report (send every few seconds)
+{
+  "type": "routing",
+  "node_id": "1A",
+  "is_passable": true,
+  "temperature": 24.5,
+  "co2": 0.12,
+  "sensor_error": false
+}
+
+// Reply to every heartbeat ping
+{"type": "heartbeat_ack"}
+
+// When help button is pressed
+{
+  "type": "distress",
+  "node_id": "1A",
+  "seq": 1,
+  "floor": 1,
+  "location_label": "Main Corridor West",
+  "timestamp_ms": 1234567890
+}
+```
+
+`seq` should increment by 1 on each button press so the controller can detect duplicates.
+
+**Controller sends → you:**
+
+```json
+// Periodic liveness check — always reply with heartbeat_ack
+{"type": "heartbeat", "timestamp_ms": 1234567890}
+
+// Your next-hop direction — point the exit arrow here
+{"type": "path_push", "node_id": "1A", "next_hop_id": "1B", "path_distance": 7.5}
+
+// Acknowledgement of your distress button press
+{"type": "distress_ack", "node_id": "1A", "seq": 1, "timestamp_ms": 1234567890}
+```
+
+---
+
+### Wiring into the current structure
+
+**Step 1: Construct topology**
+Write `main-lib.json` that represents nodes.
+1. In project root, run 
+   `java -cp target/mse-controller-1.0-SNAPSHOT.jar mse.topology.TopologyGenerator`
+   to start topology generator.
+2. Enter `main-lib.json`.
+3. Enter `node`, add all nodes with id, floor, location label, and whether it's an exit or not.
+4. Enter `edge`, add all edges with endnodes, weights (distances), and direction.
+5. Run
+   `java -cp target/mse-controller-1.0-SNAPSHOT.jar mse.topology.TopologyValidator main-lib.json`
+   to see if the topology is valid. Exits 0 if clean. Will catch asymmetric edges, missing references, duplicate IDs.
+You may stop/restart the generator anytime. Successfully written nodes and edges are auto saved.
+
+Alternative approach: Manually editing with reference to `sample-topology.json`.
+
+
+**Step 2 — Add a real node to topology**
+
+Select a node (preferably an intersection) in `main-lib.json`, set the real MAC address, and add the `node_id` to `hardware.nodes` at the end of `config.properties`.
+
+
+**Step 3 — Configure `config.properties`**
+
+1. Serial port
+- Linux/macOS — run `ls /dev/tty.* (macOS)` or `ls /dev/ttyUSB* /dev/ttyACM*` (Linux) before and after plugging in the ESP32; the new entry is your port
+- Windows — Device Manager → Ports (COM & LPT)
+Then set it in config.properties, e.g.
+`serial.port=/dev/tty.usbserial-1410`
+
+2. Passibility thresholds
+   Change the settings:
+   ```json
+   passability.temperature.threshold=60.0
+   passability.gas.threshold=0.5
+   ```
+
+
+**Step 4 — Run in mixed mode**
+
+```bash
+java -cp target/mse-controller-1.0-SNAPSHOT.jar \
+     mse.simulator.Simulator \
+     sample-topology.json config.properties
+```
+The physical node will talk to the controller over serial. All other nodes in the topology run as simulator instances. The dashboard will show both real and simulated nodes together.
+
+
+
 
 ---
 
