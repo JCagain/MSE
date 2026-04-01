@@ -18,6 +18,7 @@ import java.util.*;
  *   node  — add a node (prompts for id, mac, floor, label, is_exit)
  *   edge  — add a bidirectional edge (prompts for both nodes, weight, directions)
  *   list  — print current topology
+ *   load  — load an existing topology file to continue editing
  *   save  — validate and save to file
  *   quit  — exit without saving
  */
@@ -30,7 +31,7 @@ public class TopologyGenerator {
         Map<String, NodeJson> byId = new LinkedHashMap<>();
 
         System.out.println("=== MSE Topology Generator ===");
-        System.out.println("Commands: node, edge, list, save, quit");
+        System.out.println("Commands: node, edge, list, load, save, quit");
 
         while (true) {
             System.out.print("> ");
@@ -41,6 +42,7 @@ public class TopologyGenerator {
                 case "node" -> addNode(scanner, topology, byId);
                 case "edge" -> addEdge(scanner, byId);
                 case "list" -> listTopology(topology);
+                case "load" -> loadTopology(scanner, topology, byId);
                 case "save" -> { if (saveTopology(scanner, topology)) return; }
                 case "quit" -> { System.out.println("Aborted."); return; }
                 default -> System.out.println("Unknown command. Use: node, edge, list, save, quit");
@@ -102,6 +104,25 @@ public class TopologyGenerator {
         byId.get(fromId).neighbors.add(ab);
         byId.get(toId).neighbors.add(ba);
         System.out.println("  Edge added: " + fromId + " ↔ " + toId + " (weight=" + weight + ")");
+    }
+
+    private static void loadTopology(Scanner sc, TopologyJson topology, Map<String, NodeJson> byId) {
+        System.out.print("  Filename to load: ");
+        String filename = sc.nextLine().trim();
+        Path path = Path.of(filename);
+        if (!Files.exists(path)) { System.out.println("  File not found: " + filename); return; }
+        try {
+            TopologyLoader.LoadResult result = TopologyLoader.load(path);
+            topology.nodes.clear();
+            byId.clear();
+            for (TopologyLoader.NodeJson nj : result.nodeJsons) {
+                topology.nodes.add(nj);
+                byId.put(nj.nodeId, nj);
+            }
+            System.out.println("  Loaded " + topology.nodes.size() + " nodes from " + filename);
+        } catch (Exception e) {
+            System.out.println("  Failed to load: " + e.getMessage());
+        }
     }
 
     private static void listTopology(TopologyJson topology) {
