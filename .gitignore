@@ -1,0 +1,11 @@
+# Maven build output
+PathFinder/target/
+
+# Compiled legacy files
+PathFinder/*.class
+
+# Common IDE / OS artifacts
+.idea/
+*.iml
+.DS_Store
+*.swp
