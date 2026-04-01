@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MSE — Emergency Exit Dashboard</title>
+<style>
+  body { font-family: monospace; background: #111; color: #ddd; padding: 1rem; margin: 0; }
+  h1 { color: #fff; margin-bottom: 0.75rem; }
+  #status { float: right; font-size: 0.85em; color: #666; margin-top: 0.3rem; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 2px; margin-bottom: 1rem; border-bottom: 2px solid #333; }
+  .tab-btn {
+    padding: 6px 18px; background: #1a1a1a; color: #888; border: none;
+    cursor: pointer; font: inherit; font-size: 0.9em; border-radius: 4px 4px 0 0;
+    border: 1px solid #333; border-bottom: none; margin-bottom: -2px;
+  }
+  .tab-btn:hover { color: #ccc; background: #222; }
+  .tab-btn.active { background: #111; color: #fff; border-color: #555; border-bottom-color: #111; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Graph tab */
+  #graph-wrap { background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
+                display: flex; justify-content: center; }
+  #graph { display: block; }
+
+  /* Table tab */
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #222; color: #aaa; padding: 6px 10px; text-align: left; border-bottom: 2px solid #333; }
+  td { padding: 5px 10px; border-bottom: 1px solid #1e1e1e; }
+  tr.impassable td { background: #2a0000; }
+  tr.exit td { background: #001a08; }
+  tr.distress { outline: 2px solid orange; }
+  .badge { border-radius: 4px; padding: 2px 6px; font-size: 0.8em; }
+  .ok  { background: #1a3a1a; color: #6f6; }
+  .err { background: #3a0000; color: #f55; }
+
+  /* Alerts */
+  #alerts { margin-top: 1.5rem; }
+  #alerts h2 { color: #fa0; margin-bottom: 0.5rem; }
+  .alert { background: #2a1200; border-left: 4px solid orange;
+           padding: 8px 12px; margin-bottom: 6px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>MSE Emergency Exit System <span id="status">connecting...</span></h1>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="graph">Graph</button>
+  <button class="tab-btn"        data-tab="table">Table</button>
+</div>
+
+<div id="tab-graph" class="tab-panel active">
+  <div id="graph-wrap"><canvas id="graph" width="800" height="400"></canvas></div>
+</div>
+
+<div id="tab-table" class="tab-panel">
+  <table>
+    <thead>
+      <tr>
+        <th>Node</th><th>Floor</th><th>Location</th>
+        <th>Passable</th><th>Temp (°C)</th><th>CO₂</th>
+        <th>Next Hop</th><th>Distance</th><th>Last Seen</th>
+      </tr>
+    </thead>
+    <tbody id="node-table"></tbody>
+  </table>
+
+  <div id="alerts">
+    <h2>Distress Alerts</h2>
+    <div id="alert-list" style="color:#666">(none)</div>
+  </div>
+</div>
+
+<script>
+  const tableEl   = document.getElementById('node-table');
+  const alertList = document.getElementById('alert-list');
+  const statusEl  = document.getElementById('status');
+  const canvas    = document.getElementById('graph');
+  const ctx       = canvas.getContext('2d');
+  const seenAlerts = new Set();
+
+  // CSS dimensions (used for layout math)
+  const CSS_W = canvas.width;
+  const CSS_H = canvas.height;
+
+  // HiDPI fix — scale backing store, keep CSS size
+  (function scaleCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = CSS_W * dpr;
+    canvas.height = CSS_H * dpr;
+    canvas.style.width  = CSS_W + 'px';
+    canvas.style.height = CSS_H + 'px';
+    ctx.scale(dpr, dpr);
+  })();
+
+  let topology  = null;  // { nodes, edges }
+  let nodeStates = {};   // nodeId → state
+  let positions  = {};   // nodeId → {x, y} in CSS coords
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      if (btn.dataset.tab === 'graph') drawGraph();
+    });
+  });
+
+  // ── Layout ────────────────────────────────────────────────────────────────
+
+  function layoutCircle(nodes) {
+    const cx = CSS_W / 2, cy = CSS_H / 2;
+    const r  = Math.min(cx, cy) - 60;
+    nodes.forEach((n, i) => {
+      const angle = (2 * Math.PI * i / nodes.length) - Math.PI / 2;
+      positions[n.nodeId] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+    });
+  }
+
+  // ── Drawing ───────────────────────────────────────────────────────────────
+
+  function drawArrow(x1, y1, x2, y2, color) {
+    const dx = x2-x1, dy = y2-y1, len = Math.sqrt(dx*dx+dy*dy);
+    const ux = dx/len, uy = dy/len;
+    const R = 18;
+    const sx = x1+ux*R, sy = y1+uy*R, ex = x2-ux*R, ey = y2-uy*R;
+    const hw = 7, hl = 12, px = -uy, py = ux;
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - ux*hl + px*hw, ey - uy*hl + py*hw);
+    ctx.lineTo(ex - ux*hl - px*hw, ey - uy*hl - py*hw);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawGraph() {
+    if (!topology) return;
+    ctx.clearRect(0, 0, CSS_W, CSS_H);
+
+    // edges
+    topology.edges.forEach(e => {
+      const a = positions[e.from], b = positions[e.to];
+      if (!a || !b) return;
+      ctx.save();
+      ctx.strokeStyle = '#444'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.fillStyle = '#666'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(e.weight.toFixed(1), (a.x+b.x)/2, (a.y+b.y)/2 - 4);
+      ctx.restore();
+    });
+
+    // next-hop arrows
+    Object.values(nodeStates).forEach(s => {
+      if (!s.computedNextHop) return;
+      const a = positions[s.nodeId], b = positions[s.computedNextHop];
+      if (a && b) drawArrow(a.x, a.y, b.x, b.y, s.distressActive ? 'orange' : '#4af');
+    });
+
+    // nodes
+    topology.nodes.forEach(n => {
+      const p = positions[n.nodeId]; if (!p) return;
+      const s = nodeStates[n.nodeId] || {};
+      const fill   = s.distressActive ? '#b85000' : !s.isPassable ? '#5a0000' : n.isExit ? '#004d20' : '#003060';
+      const stroke = s.timedOut ? '#666' : n.isExit ? '#0f0' : '#4af';
+      ctx.save();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, 2*Math.PI);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = stroke; ctx.lineWidth = s.distressActive ? 3 : 2; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(n.nodeId, p.x, p.y);
+      if (s.temperature != null) {
+        ctx.fillStyle = '#aaa'; ctx.font = '9px monospace';
+        ctx.fillText(s.temperature.toFixed(0) + '°', p.x, p.y + 28);
+      }
+      ctx.restore();
+    });
+
+    // legend
+    [['#003060','#4af','Passable'],['#004d20','#0f0','Exit'],
+     ['#5a0000','#f55','Blocked'], ['#b85000','orange','Distress']].forEach((item, i) => {
+      const lx = 10, ly = CSS_H - 14 - i*16;
+      ctx.fillStyle = item[0]; ctx.strokeStyle = item[1]; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.rect(lx, ly-6, 10, 10); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#888'; ctx.font = '10px monospace'; ctx.textAlign = 'left';
+      ctx.fillText(item[2], lx+14, ly);
+    });
+    ctx.strokeStyle = '#4af'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(10, CSS_H-82); ctx.lineTo(24, CSS_H-82); ctx.stroke();
+    ctx.fillStyle = '#888'; ctx.font = '10px monospace';
+    ctx.fillText('Next hop', 28, CSS_H-78);
+  }
+
+  // ── Table & alerts ────────────────────────────────────────────────────────
+
+  function render(nodes) {
+    nodes.forEach(n => { nodeStates[n.nodeId] = n; });
+    drawGraph();
+
+    tableEl.innerHTML = nodes.map(n => {
+      const rowCls = n.isExit ? 'exit' : (!n.isPassable ? 'impassable' : '');
+      const disCls = n.distressActive ? 'distress' : '';
+      const badge  = n.isPassable ? '<span class="badge ok">YES</span>' : '<span class="badge err">NO</span>';
+      const ago    = n.lastSeenMs ? Math.round((Date.now()-n.lastSeenMs)/1000)+'s ago' : '—';
+      const dist   = n.computedDistance != null ? n.computedDistance.toFixed(1) : '∞';
+      return `<tr class="${rowCls} ${disCls}">
+        <td>${n.nodeId}${n.isExit?' 🚪':''}</td><td>${n.floor}</td><td>${n.locationLabel}</td>
+        <td>${badge}</td><td>${n.temperature.toFixed(1)}</td><td>${n.co2.toFixed(2)}</td>
+        <td>${n.computedNextHop||'—'}</td><td>${dist}</td><td>${ago}</td></tr>`;
+    }).join('');
+
+    nodes.filter(n => n.distressActive).forEach(n => {
+      if (seenAlerts.has(n.nodeId)) return;
+      seenAlerts.add(n.nodeId);
+      const div = document.createElement('div');
+      div.className = 'alert';
+      div.textContent = `⚠ DISTRESS — ${n.nodeId} (${n.locationLabel}) at ${new Date().toLocaleTimeString()}`;
+      alertList.prepend(div);
+      const placeholder = alertList.querySelector('div[style]');
+      if (placeholder) placeholder.remove();
+    });
+  }
+
+  // ── Bootstrap ─────────────────────────────────────────────────────────────
+
+  fetch('/api/topology').then(r => r.json()).then(t => {
+    topology = t; layoutCircle(t.nodes); drawGraph();
+  });
+  fetch('/api/state').then(r => r.json()).then(render).catch(() => {});
+
+  function connect() {
+    const es = new EventSource('/api/events');
+    es.onopen    = () => { statusEl.textContent = 'live'; statusEl.style.color = '#6f6'; };
+    es.onmessage = e  => render(JSON.parse(e.data));
+    es.onerror   = () => {
+      statusEl.textContent = 'reconnecting...'; statusEl.style.color = '#fa0';
+      es.close(); setTimeout(connect, 3000);
+    };
+  }
+  connect();
+</script>
+</body>
+</html>

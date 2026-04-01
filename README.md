@@ -18,7 +18,6 @@ continuously and pushes updated next-hop instructions to every node.
 ## Quick Start (no hardware required)
 
 ```bash
-cd PathFinder
 mvn package -q
 java -cp target/mse-controller-1.0-SNAPSHOT.jar \
      mse.simulator.Simulator \
@@ -208,34 +207,10 @@ Impassable nodes are highlighted red. Active distress alerts appear in the panel
 
 ---
 
-## Swing GUI (`GraphGUI`)
-
-A standalone visual tool for exploring the graph and pathfinding algorithms — no Maven, no serial,
-no hardware needed.
-
-```bash
-cd PathFinder
-javac GraphGUI.java
-java GraphGUI
-```
-
-The GUI shows the building graph as an interactive canvas with two modes (toggled via the button):
-
-- **Change Passability** — click any node to toggle its passable override on/off
-- **Find Path** — click a source node then a destination to display up to 3 shortest paths,
-  rendered in gold, pink, and cyan (Yen's K-Shortest Paths algorithm)
-
-Node color coding: blue = regular passable, green = exit passable, red = impassable.
-
-> `GraphGUI.java` is self-contained — it inlines its own versions of `Node`, `Exit`, and
-> `PathCandidate` and does not depend on Maven or any external library.
-
----
-
 ## Project Structure
 
 ```
-PathFinder/
+MSE/
 ├── pom.xml                      # Maven build (Java 17, fat jar via shade plugin)
 ├── config.properties            # Runtime configuration
 ├── sample-topology.json         # 4-node sample building

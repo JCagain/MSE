@@ -8,9 +8,9 @@
 
 ## 1. Overview
 
-A smart emergency exit light system where each light is an ESP32 node that senses environmental conditions, participates in a distributed routing mesh, and directs occupants toward the nearest safe exit. A central controller (laptop or Raspberry Pi) optimizes routing and handles external emergency notifications.
+A smart emergency exit light system where each light is an ESP32 node that senses environmental conditions, participates in a distributed routing mesh, and directs occupants toward the nearest safe exit. A central controller (Raspberry Pi) optimizes routing and handles external emergency notifications.
 
-**Exit nodes** are a special subset of nodes located at physical building exits. They always hold `distance = 0` and seed the routing wavefront. All other nodes compute their distance to the nearest reachable exit node.
+**Exit nodes** are a special subset of nodes located at physical building exits. They always hold `distance = 0` unless it's unpassible, in which case `distance = ∞`, and seed the routing wavefront. All other nodes compute their distance to the nearest reachable exit node.
 
 The system degrades gracefully through three operating modes:
 
@@ -27,7 +27,7 @@ Mode transitions are automatic. A node re-enters Normal mode immediately on rece
 ## 2. System Architecture
 
 ```
-[ Controller (laptop / Raspberry Pi 4 + UPS) ]
+[ Controller (Raspberry Pi 4 + UPS) ]
         |  (USB serial, 115200 baud, newline-delimited JSON)
 [ Gateway ESP32 ]  ← full routing participant + serial bridge
         |
@@ -59,35 +59,35 @@ Sample structure:
 {
   "nodes": [
     {
-      "node_id": "A1",
+      "node_id": "1A",
       "mac_address": "AA:BB:CC:DD:EE:01",
       "floor": 1,
       "location_label": "Main Corridor West",
       "is_exit": false,
       "neighbors": [
-        { "node_id": "A2", "edge_weight": 5.0, "direction": "right" },
-        { "node_id": "B1", "edge_weight": 3.0, "direction": "forward" }
+        { "node_id": "1B", "edge_weight": 5.0, "direction": "right" },
+        { "node_id": "1C", "edge_weight": 3.0, "direction": "forward" }
       ]
     },
     {
-      "node_id": "A2",
+      "node_id": "1B",
       "mac_address": "AA:BB:CC:DD:EE:02",
       "floor": 1,
       "location_label": "Main Corridor East",
       "is_exit": false,
       "neighbors": [
-        { "node_id": "A1", "edge_weight": 5.0, "direction": "left" },
-        { "node_id": "EXIT-S", "edge_weight": 7.0, "direction": "forward" }
+        { "node_id": "1A", "edge_weight": 5.0, "direction": "left" },
+        { "node_id": "1Exit-A", "edge_weight": 7.0, "direction": "forward" }
       ]
     },
     {
-      "node_id": "EXIT-S",
+      "node_id": "1Exit-A",
       "mac_address": "AA:BB:CC:DD:EE:FF",
       "floor": 1,
       "location_label": "South Gate",
       "is_exit": true,
       "neighbors": [
-        { "node_id": "A2", "edge_weight": 7.0, "direction": "back" }
+        { "node_id": "1B", "edge_weight": 7.0, "direction": "back" }
       ]
     }
   ]
@@ -148,7 +148,7 @@ On receiving a broadcast from a registered neighbor:
 4. If `|new_distance − old_distance| > REBROADCAST_THRESHOLD` (absolute delta), rebroadcast immediately
 5. Also broadcast periodically every `BROADCAST_INTERVAL_MS` regardless of change
 
-**Exit nodes** always hold `distance = 0`, broadcast unconditionally on startup, and continue broadcasting at `BROADCAST_INTERVAL_MS`. They seed the wavefront in both fallback modes.
+**Exit nodes** always hold `distance = 0` unless it's unpassible, broadcast unconditionally on startup, and continue broadcasting at `BROADCAST_INTERVAL_MS`. They seed the wavefront in both fallback modes.
 
 **Neighbor timeout**: neighbors not heard from within `NEIGHBOR_TIMEOUT_MS` are removed from the neighbor table. Gossiped state entries not updated within `GOSSIP_TIMEOUT_MS` are marked stale and excluded from Dijkstra reconstruction.
 
@@ -170,10 +170,9 @@ Evacuation mode enables audio guidance system-wide.
 - If evacuation mode was entered locally (distance = ∞, no `EVACUATION_START` received): the node exits evacuation mode locally when its `distance` recovers to a finite value
 
 **Behavior in evacuation mode:**
-- Speaker plays directional audio on each routing change ("proceed right toward exit")
-- Speaker loops a calm guidance tone every `AUDIO_REPEAT_INTERVAL_MS`
+- Speaker plays directional audio on each routing change (to be designed later)
 - If `my_distance = ∞`: sign switches to warning pattern; speaker plays alert tone
-- **Exit nodes** in evacuation mode play a "you have reached the exit" tone at `AUDIO_REPEAT_INTERVAL_MS` and display a fixed EXIT indicator — no directional prompt, as direction toward self is undefined
+- **Exit nodes** in evacuation mode play a (to be designed later) sound at `AUDIO_REPEAT_INTERVAL_MS` and display a fixed EXIT indicator — no directional prompt, as direction toward self is undefined
 
 ### 4.4 Output
 
@@ -191,6 +190,16 @@ On press:
 6. A relay node that receives a `distress_ack` matching a pending `(node_id, seq)` clears that entry's relay state and stops forwarding for it
 7. The originating node persists the distress event to ESP32 NVS flash and retries broadcasting at `NODE_DISTRESS_RETRY_INTERVAL_MS` until it receives an ack
 
+**Caller feedback:**
+
+| State | Sign | Speaker |
+|---|---|---|
+| Button pressed (sending) | Overrides directional display; shows pulsing pattern at `DISTRESS_SIGN_PULSE_INTERVAL_MS` | Short single beep immediately on press |
+| Ack received | Returns to normal directional display | Two short beeps |
+| Retrying (no ack yet) | Continues pulsing | Single beep on each retry broadcast |
+
+The sign override persists until ack is received or the node is rebooted. Speaker tones for distress states are distinct from evacuation audio.
+
 ---
 
 ## 5. Communication Protocol
@@ -201,7 +210,7 @@ On press:
 ```json
 {
   "type": "routing",
-  "node_id": "A2",
+  "node_id": "1B",
   "distance": 12.5,
   "is_passable": true,
   "sensor_error": false,
@@ -217,7 +226,7 @@ On press:
 ```json
 {
   "type": "distress",
-  "node_id": "A2",
+  "node_id": "1B",
   "seq": 7,
   "floor": 2,
   "location_label": "East Corridor",
@@ -227,7 +236,7 @@ On press:
 
 **Distress ACK** — controller → gateway → mesh:
 ```json
-{ "type": "distress_ack", "node_id": "A2", "seq": 7, "timestamp_ms": 123456 }
+{ "type": "distress_ack", "node_id": "1B", "seq": 7, "timestamp_ms": 123456 }
 ```
 
 **Controller heartbeat** — controller → gateway → mesh, every `heartbeat.interval.ms`:
@@ -243,7 +252,7 @@ The gateway sends this ack immediately on receiving each heartbeat packet from t
 
 **Path push** — controller → gateway → specific node:
 ```json
-{ "type": "path_push", "node_id": "A2", "next_hop_id": "B1", "path_distance": 12.5 }
+{ "type": "path_push", "node_id": "1B", "next_hop_id": "1C", "path_distance": 12.5 }
 ```
 
 **Evacuation control** — controller → gateway → mesh (broadcast):
@@ -364,6 +373,7 @@ Simulates N virtual ESP32 nodes participating in the full routing protocol. Used
 #define DISTRESS_MAX_HOPS                     10
 #define DISTRESS_RELAY_TIMEOUT_MS             3000
 #define NODE_DISTRESS_RETRY_INTERVAL_MS       5000    // node retrying its own distress broadcast
+#define DISTRESS_SIGN_PULSE_INTERVAL_MS       500     // sign pulse period while distress unacknowledged
 
 // Audio
 #define AUDIO_REPEAT_INTERVAL_MS              30000

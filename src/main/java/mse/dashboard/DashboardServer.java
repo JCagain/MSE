@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import mse.Node;
 import mse.controller.Controller;
 import mse.controller.NodeState;
 import org.eclipse.jetty.server.Server;
@@ -44,9 +45,10 @@ public class DashboardServer {
         ServletContextHandler ctx = new ServletContextHandler();
         ctx.setContextPath("/");
 
-        ctx.addServlet(new ServletHolder(new StateServlet()),   "/api/state");
+        ctx.addServlet(new ServletHolder(new StateServlet()),    "/api/state");
         ctx.addServlet(new ServletHolder(new EventsServlet()),  "/api/events");
         ctx.addServlet(new ServletHolder(new DistressServlet()),"/api/distress");
+        ctx.addServlet(new ServletHolder(new TopologyServlet()),"/api/topology");
         ctx.addServlet(new ServletHolder(new RootServlet()),    "/");
 
         server.setHandler(ctx);
@@ -126,6 +128,42 @@ public class DashboardServer {
             res.setContentType("application/json");
             res.setHeader("Access-Control-Allow-Origin", "*");
             res.getWriter().println(gson.toJson(controller.getRecentDistressEvents()));
+        }
+    }
+
+    private class TopologyServlet extends HttpServlet {
+        @Override protected void doGet(HttpServletRequest req, HttpServletResponse res)
+                throws IOException {
+            res.setContentType("application/json");
+            res.setHeader("Access-Control-Allow-Origin", "*");
+
+            List<Map<String, Object>> nodes = new ArrayList<>();
+            List<Map<String, Object>> edges = new ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+
+            for (Node n : controller.getGraph().getAllNodes()) {
+                Map<String, Object> nm = new LinkedHashMap<>();
+                nm.put("nodeId", n.getId());
+                nm.put("isExit", n instanceof mse.Exit);
+                nodes.add(nm);
+
+                for (Map.Entry<Node, Float> e : n.getNeighbors().entrySet()) {
+                    String a = n.getId(), b = e.getKey().getId();
+                    String key = a.compareTo(b) <= 0 ? a + "~" + b : b + "~" + a;
+                    if (seen.add(key)) {
+                        Map<String, Object> em = new LinkedHashMap<>();
+                        em.put("from", a);
+                        em.put("to", b);
+                        em.put("weight", e.getValue());
+                        edges.add(em);
+                    }
+                }
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("nodes", nodes);
+            result.put("edges", edges);
+            res.getWriter().println(gson.toJson(result));
         }
     }
 

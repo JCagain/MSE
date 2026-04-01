@@ -1,11 +1,13 @@
 # Maven build output
-PathFinder/target/
-
-# Compiled legacy files
-PathFinder/*.class
+target/
 
 # Common IDE / OS artifacts
 .idea/
 *.iml
 .DS_Store
 *.swp
+
+# Claude Settings
+.claude/
+CLAUDE.md
+docs/
