@@ -1,7 +1,7 @@
 package mse.dashboard;
 
 import mse.Node;
-import mse.controller.Controller;
+import mse.controller.DashboardDataSource;
 import mse.controller.NodeState;
 import mse.distress.DistressRecord;
 
@@ -65,7 +65,7 @@ public class SwingDashboard {
     // State
     // -------------------------------------------------------------------------
 
-    private final Controller controller;
+    private final DashboardDataSource source;
 
     private JFrame              frame;
     private DefaultTableModel   tableModel;
@@ -75,8 +75,8 @@ public class SwingDashboard {
     private final Set<String> shownAlerts   = new HashSet<>();
     private final Set<String> distressNodes = new HashSet<>();
 
-    public SwingDashboard(Controller controller) {
-        this.controller = controller;
+    public SwingDashboard(DashboardDataSource source) {
+        this.source = source;
     }
 
     // -------------------------------------------------------------------------
@@ -229,7 +229,7 @@ public class SwingDashboard {
         if (tableModel == null) return;
 
         long now = System.currentTimeMillis();
-        Collection<NodeState> states = controller.getNodeStates().values();
+        Collection<NodeState> states = source.getNodeStates().values();
 
         distressNodes.clear();
         for (NodeState s : states) {
@@ -257,7 +257,7 @@ public class SwingDashboard {
         }
 
         SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
-        for (DistressRecord r : controller.getRecentDistressEvents()) {
+        for (DistressRecord r : source.getRecentDistressEvents()) {
             String key = r.nodeId + ":" + r.seq;
             if (shownAlerts.add(key)) {
                 alertModel.add(0,
@@ -295,7 +295,7 @@ public class SwingDashboard {
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
 
-            Map<String, NodeState> states = controller.getNodeStates();
+            Map<String, NodeState> states = source.getNodeStates();
             if (states.isEmpty()) return;
 
             ensureLayout(states);
@@ -332,7 +332,7 @@ public class SwingDashboard {
             for (String id : states.keySet()) {
                 Point2D.Float p = scaledPos(id, w, h);
                 if (p == null) continue;
-                controller.getGraph().getNode(id).ifPresent(node -> {
+                source.getGraph().getNode(id).ifPresent(node -> {
                     for (Node nb : node.getNeighbors().keySet()) {
                         String nid = nb.getId();
                         String edgeKey = id.compareTo(nid) < 0 ? id + "-" + nid : nid + "-" + id;
@@ -474,7 +474,7 @@ public class SwingDashboard {
 
                 // Attraction along edges (natural length 0.3)
                 for (String id : ids) {
-                    controller.getGraph().getNode(id).ifPresent(node -> {
+                    source.getGraph().getNode(id).ifPresent(node -> {
                         Point2D.Float pa = positions.get(id);
                         for (Node nb : node.getNeighbors().keySet()) {
                             Point2D.Float pb = positions.get(nb.getId());
