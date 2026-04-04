@@ -1,13 +1,11 @@
 # Maven build output
 target/
 
+# Git worktrees
+.worktrees/
+
 # Common IDE / OS artifacts
 .idea/
 *.iml
 .DS_Store
 *.swp
-
-# Claude Settings
-.claude/
-CLAUDE.md
-docs/
