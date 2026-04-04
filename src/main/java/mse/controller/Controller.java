@@ -97,7 +97,7 @@ public class Controller {
         this.pathService = new PathComputationService(
             graph, broadcastIntervalMs, this::onPathResults);
 
-        this.distressHandler = new DistressHandler(config);
+        this.distressHandler = new DistressHandler();
 
         this.watchdog = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "node-watchdog");
@@ -115,8 +115,6 @@ public class Controller {
         long nodeTimeoutMs = longProp("node.timeout.ms", 20000);
         watchdog.scheduleAtFixedRate(
             this::checkNodeTimeouts, nodeTimeoutMs, nodeTimeoutMs, TimeUnit.MILLISECONDS);
-
-        distressHandler.start();
 
         dashboard = new SwingDashboard(this);
         dashboard.start();
