@@ -1,8 +1,8 @@
 package mse.distress;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Stores distress events in memory for display on the dashboard.
@@ -10,14 +10,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class DistressHandler {
 
-    private final List<DistressRecord> recentEvents = new CopyOnWriteArrayList<>();
+    private final List<DistressRecord> recentEvents = new ArrayList<>();
 
-    public void handle(DistressRecord record) {
+    public synchronized void handle(DistressRecord record) {
         recentEvents.add(0, record);
         if (recentEvents.size() > 100) recentEvents.remove(recentEvents.size() - 1);
     }
 
-    public List<DistressRecord> getRecentEvents() {
-        return Collections.unmodifiableList(recentEvents);
+    public synchronized List<DistressRecord> getRecentEvents() {
+        return Collections.unmodifiableList(new ArrayList<>(recentEvents));
     }
 }

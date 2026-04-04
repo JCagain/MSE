@@ -65,7 +65,17 @@ public class TopologyCompiler {
             List<NeighborJson> nbs = neighbors(nodes.get(i));
             sb.append("    {");
             for (int j = 0; j < maxN; j++) {
-                sb.append(j < nbs.size() ? idx.get(nbs.get(j).nodeId) : -1);
+                if (j < nbs.size()) {
+                    String nbId = nbs.get(j).nodeId;
+                    Integer nbIdx = idx.get(nbId);
+                    if (nbIdx == null) {
+                        throw new IllegalArgumentException(
+                            "Node '" + nodes.get(i).nodeId + "' references unknown neighbor '" + nbId + "'");
+                    }
+                    sb.append(nbIdx);
+                } else {
+                    sb.append(-1);
+                }
                 if (j < maxN - 1) sb.append(", ");
             }
             sb.append("}");

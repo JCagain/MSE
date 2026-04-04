@@ -129,6 +129,7 @@ public class MegaBridge implements DashboardDataSource {
             state.computedDistance  = n.get("dist").getAsFloat();
             state.timedOut          = n.get("timed_out").getAsBoolean();
             state.distressActive    = n.get("distress").getAsBoolean();
+            state.lastSeenMs        = System.currentTimeMillis();
         }
         if (dashboard != null) dashboard.push();
     }
