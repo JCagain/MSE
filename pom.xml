@@ -44,7 +44,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>mse.controller.Controller</mainClass>
+                            <mainClass>mse.controller.MegaBridge</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
