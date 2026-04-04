@@ -32,7 +32,7 @@ import java.util.logging.Logger;
  *   heartbeat_ack → HeartbeatService.onAckReceived()
  *   distress      → DistressHandler.handle() + send distress_ack
  */
-public class Controller {
+public class Controller implements DashboardDataSource {
 
     private static final Logger LOG = Logger.getLogger(Controller.class.getName());
 
