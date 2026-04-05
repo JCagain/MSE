@@ -84,6 +84,13 @@ static const float WEIGHTS[NUM_NODES][MAX_NEIGHBORS] = {
     {3.0f, 4.0f},
     {7.0f, 4.0f},
 };
+
+static const char* const DIRECTIONS[NUM_NODES][MAX_NEIGHBORS] = {
+    {"right", "forward"},   // 1A
+    {"left", "forward"},    // 1B
+    {"back", "right"},      // 1C
+    {"back", "left"},       // 1Exit-A
+};
 ```
 
 - [ ] **Step 4: Commit**
@@ -600,11 +607,19 @@ void mesh_broadcast_path_push(void) {
     for (int i = 0; i < NUM_NODES; i++) {
         if (node_states[i].next_hop < 0) continue;  // exit node or unreachable
 
+        // Find which neighbor slot corresponds to next_hop, look up direction
+        const char* dir = "";
+        for (int j = 0; j < MAX_NEIGHBORS; j++) {
+            if (NEIGHBOR_IDX[i][j] == node_states[i].next_hop) {
+                dir = DIRECTIONS[i][j];
+                break;
+            }
+        }
+
         StaticJsonDocument<128> doc;
-        doc["type"]          = "path_push";
-        doc["node_id"]       = NODE_IDS[i];
-        doc["next_hop_id"]   = NODE_IDS[node_states[i].next_hop];
-        doc["path_distance"] = node_states[i].dist;
+        doc["type"]      = "path_push";
+        doc["node_id"]   = NODE_IDS[i];
+        doc["direction"] = dir;
         serializeJson(doc, Serial1);
         Serial1.println();
     }
