@@ -8,11 +8,11 @@
 //   ESP32 TX (GPIO 1)  -> Mega RX1 (pin 19)
 //   GND                -- GND
 //
-// NOTE: Requires the ArduinoJson library (v6).
+// No external libraries required — uses plain C string parsing.
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <string.h>
+#include <stdio.h>
 
 // ── config ───────────────────────────────────────────────────────────────────
 // Change this to match this device's node_id in topology.json.
@@ -31,14 +31,31 @@ void path_receiver_init(void) {
     direction_buf[0] = '\0';
 }
 
+// Extract the string value for a JSON key from a flat JSON line.
+// Finds the pattern "key":"..." and copies the value into out_buf.
+// Returns true on success.
+static bool json_get_str(const char* json, const char* key,
+                         char* out_buf, int out_size) {
+    char pattern[32];
+    snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
+    const char* p = strstr(json, pattern);
+    if (!p) return false;
+    p += strlen(pattern);
+    int i = 0;
+    while (*p && *p != '"' && i < out_size - 1) {
+        out_buf[i++] = *p++;
+    }
+    out_buf[i] = '\0';
+    return (*p == '"');
+}
+
 void path_receiver_feed_line(const char* line) {
-    StaticJsonDocument<256> doc;
-    if (deserializeJson(doc, line) != DeserializationError::Ok) return;
-    const char* type = doc["type"] | "";
-    if (strcmp(type, "path_push") != 0) return;
-    const char* node_id = doc["node_id"] | "";
+    if (!strstr(line, "\"path_push\"")) return;
+    char node_id[16];
+    if (!json_get_str(line, "node_id", node_id, sizeof(node_id))) return;
     if (strcmp(node_id, MY_NODE_ID) != 0) return;
-    const char* dir = doc["direction"] | "";
+    char dir[16];
+    if (!json_get_str(line, "direction", dir, sizeof(dir))) return;
     strncpy(direction_buf, dir, sizeof(direction_buf) - 1);
     direction_buf[sizeof(direction_buf) - 1] = '\0';
     has_direction = true;
