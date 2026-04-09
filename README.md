@@ -113,7 +113,7 @@ All communication is **newline-delimited JSON at 115200 baud** over USB serial. 
 {"type": "heartbeat", "timestamp_ms": 1234567890}
 
 // Your next-hop direction — point the exit arrow here
-{"type": "path_push", "node_id": "1A", "next_hop_id": "1B", "path_distance": 7.5}
+{"type": "path_push", "node_id": "5", "direction": "left"}
 
 // Acknowledgement of your distress button press
 {"type": "distress_ack", "node_id": "1A", "seq": 1, "timestamp_ms": 1234567890}
