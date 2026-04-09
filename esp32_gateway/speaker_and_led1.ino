@@ -9,28 +9,28 @@
 #define BUZZER 8
 
 String currentMode = "off";
-// Stores inline buffer
-static char line_buf[128];
-static int  line_pos = 0;
-// Stores the last direction received for MY_NODE_ID.
 static char direction_buf[16];
 static bool has_direction = false;
 
 // ------ Path Helper Functions ------
 void path_receiver_init(void) {
     Serial.begin(115200);
-    line_pos         = 0;
     has_direction    = false;
     direction_buf[0] = '\0';
 }
 
+// Extract a string value from a flat JSON object.
+// Handles optional whitespace after the colon, e.g. "key": "value".
 static bool json_get_str(const char* json, const char* key,
                          char* out_buf, int out_size) {
     char pattern[32];
-    snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
+    snprintf(pattern, sizeof(pattern), "\"%s\":", key);
     const char* p = strstr(json, pattern);
     if (!p) return false;
     p += strlen(pattern);
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != '"') return false;
+    p++;
     int i = 0;
     while (*p && *p != '"' && i < out_size - 1) {
         out_buf[i++] = *p++;
@@ -39,6 +39,8 @@ static bool json_get_str(const char* json, const char* key,
     return (*p == '"');
 }
 
+// Parse one JSON line. Sets direction_buf + has_direction if valid path_push for MY_NODE_ID.
+// Expected format: {"type": "path_push", "node_id": "5", "direction": "left"}
 void path_receiver_feed_line(const char* line) {
     if (!strstr(line, "\"path_push\"")) return;
     char node_id[16];
@@ -51,27 +53,20 @@ void path_receiver_feed_line(const char* line) {
     has_direction = true;
 }
 
+// Read from Serial and feed any complete line to path_receiver_feed_line.
+// Uses readStringUntil with its built-in timeout so no line terminator is required
+// (compatible with Tinkercad's Serial Monitor which sends no line ending).
 void path_receiver_poll(void) {
-    static bool overflow = false;
-    while (Serial.available()) {
-        char c = (char)Serial.read();
-        if (c == '\n') {
-            if (!overflow) {
-                line_buf[line_pos] = '\0';
-                path_receiver_feed_line(line_buf);
-            }
-            line_pos = 0;
-            overflow = false;
-        } else if (c == '\r') {
-        } else if (line_pos < 127) {
-            line_buf[line_pos++] = c;
-        } else {
-            overflow = true;
+    if (Serial.available() > 0) {
+        String line = Serial.readStringUntil('\n');
+        line.trim();
+        if (line.length() > 0) {
+            path_receiver_feed_line(line.c_str());
         }
     }
-    printf("%s", direction_buf);
 }
 
+// Returns the last received direction ("left", "right", "block"), or nullptr if none pending.
 const char* path_receiver_get_direction(void) {
     return has_direction ? direction_buf : nullptr;
 }
@@ -80,53 +75,45 @@ const char* path_receiver_get_direction(void) {
 
 void setup() {
   path_receiver_init();
-  
-  Serial.begin(9600);
   pinMode(LED_LEFT, OUTPUT);
   pinMode(LED_RIGHT, OUTPUT);
   pinMode(BUZZER, OUTPUT);
-  
+
   digitalWrite(LED_LEFT, LOW);
   digitalWrite(LED_RIGHT, LOW);
   noTone(BUZZER);
-  
-  Serial.println("Module at Node5");
-  Serial.println("enter 'block' as not accessible");
-  Serial.println("enter 'exit4' as go left");
-  Serial.println("enter 'exit6' as go right");
+
+  Serial.println("Node 5 ready. Send JSON: {\"type\":\"path_push\",\"node_id\":\"5\",\"direction\":\"left|right|block\"}");
 }
 
 void loop() {
-  // Check for new commands
-  if (Serial.available() > 0) {
-    String cmd = Serial.readStringUntil('\n');
-    cmd.trim();
-    currentMode = cmd;
-  }
-  
-  // Poll received path package
   path_receiver_poll();
 
+  const char* dir = path_receiver_get_direction();
+  if (dir) {
+    currentMode = String(dir);
+    has_direction = false;
+  }
+
   // ------------------------------
-  // Continuous GO LEFT (Exit 4)
+  // GO LEFT
   // ------------------------------
-  if (currentMode == "exit4") {
+  if (currentMode == "left") {
     digitalWrite(LED_LEFT, HIGH);
     tone(BUZZER, 800);
     delay(200);
-    
+
     digitalWrite(LED_LEFT, LOW);
     noTone(BUZZER);
     delay(300);
-    
-    Serial.println("GO LEFT: Exit 4");
+
+    Serial.println("GO LEFT");
   }
 
   // ------------------------------
-  // Continuous GO RIGHT (Exit 6)
+  // GO RIGHT
   // ------------------------------
-  else if (currentMode == "exit6") {
-    // Beep 1
+  else if (currentMode == "right") {
     digitalWrite(LED_RIGHT, HIGH);
     tone(BUZZER, 800);
     delay(180);
@@ -134,32 +121,31 @@ void loop() {
     noTone(BUZZER);
     delay(120);
 
-    // Beep 2
     digitalWrite(LED_RIGHT, HIGH);
     tone(BUZZER, 800);
     delay(180);
     digitalWrite(LED_RIGHT, LOW);
     noTone(BUZZER);
     delay(300);
-    
-    Serial.println("GO RIGHT: Exit 6");
+
+    Serial.println("GO RIGHT");
   }
 
   // ------------------------------
-  // Continuous DO NOT ENTER
+  // BLOCK (DO NOT ENTER)
   // ------------------------------
   else if (currentMode == "block") {
     digitalWrite(LED_LEFT, HIGH);
     digitalWrite(LED_RIGHT, HIGH);
     tone(BUZZER, 800);
     delay(500);
-    
+
     digitalWrite(LED_LEFT, LOW);
     digitalWrite(LED_RIGHT, LOW);
     noTone(BUZZER);
     delay(300);
-    
-    Serial.println("DO NOT ENTER!");
+
+    Serial.println("DO NOT ENTER");
   }
 
   // ------------------------------

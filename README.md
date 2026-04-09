@@ -259,6 +259,26 @@ The gateway ESP32 is both the serial bridge **and** a full mesh node. It should:
 
 Add the gateway to `topology.json` as a normal node entry.
 
+### Tinkercad Sketch — `esp32_gateway/speaker_and_led1.ino`
+
+A single-file Tinkercad-compatible sketch for Node 5. Listens for `path_push` JSON over serial and drives an LED + buzzer accordingly.
+
+**Pins:** LED_LEFT = 13, LED_RIGHT = 12, BUZZER = 8
+
+**Modes** (set via `direction` field):
+
+| `direction` | Behaviour |
+|-------------|-----------|
+| `left`  | Left LED flashes, single beep pattern |
+| `right` | Right LED flashes, double beep pattern |
+| `block` | Both LEDs flash, long beep — do not enter |
+
+**Testing in Tinkercad Serial Monitor:**
+```json
+{"type": "path_push", "node_id": "5", "direction": "left"}
+```
+No line ending required — `readStringUntil` handles the timeout automatically.
+
 ---
 
 ## Serial Packet Protocol
