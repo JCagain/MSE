@@ -23,6 +23,13 @@ static const float WEIGHTS[NUM_NODES][MAX_NEIGHBORS] = {
     {7.0f, 4.0f}
 };
 
+static const char* const DIRECTIONS[NUM_NODES][MAX_NEIGHBORS] = {
+    {"right", "forward"},   // 1A
+    {"left", "forward"},   // 1B
+    {"back", "right"},   // 1C
+    {"back", "left"}   // 1Exit-A
+};
+
 // NODE_PORT[i]: which Mega hardware serial port talks directly to node i.
 // 1 = Serial1 (TX1 pin18 / RX1 pin19)
 // 2 = Serial2 (TX2 pin16 / RX2 pin17)
