@@ -96,6 +96,22 @@ public class TopologyCompiler {
             if (i < n - 1) sb.append(",");
             sb.append("\n");
         }
+        sb.append("};\n\n");
+
+        sb.append("static const char* const DIRECTIONS[NUM_NODES][MAX_NEIGHBORS] = {\n");
+        for (int i = 0; i < n; i++) {
+            List<NeighborJson> nbs = neighbors(nodes.get(i));
+            sb.append("    {");
+            for (int j = 0; j < maxN; j++) {
+                String dir = (j < nbs.size() && nbs.get(j).direction != null)
+                        ? nbs.get(j).direction : "";
+                sb.append('"').append(dir).append('"');
+                if (j < maxN - 1) sb.append(", ");
+            }
+            sb.append("}");
+            if (i < n - 1) sb.append(",");
+            sb.append("   // ").append(nodes.get(i).nodeId).append("\n");
+        }
         sb.append("};\n");
 
         return sb.toString();
