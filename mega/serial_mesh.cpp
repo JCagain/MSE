@@ -34,6 +34,8 @@ static bool process_line(char* line, char* distress_buf, int distress_buf_size) 
         }
     } else if (strcmp(type, "distress") == 0) {
         if (distress_buf != nullptr) {
+            // Note: if both nodes send distress in the same poll cycle, the second overwrites the first.
+            // Acceptable for this prototype — distress events are rare and both get flagged in node_states.
             strncpy(distress_buf, line, distress_buf_size - 1);
             distress_buf[distress_buf_size - 1] = '\0';
             int8_t idx = node_find(doc["node_id"] | "");
@@ -81,6 +83,10 @@ void mesh_send_path_push(void) {
                 dir = DIRECTIONS[i][j];
                 break;
             }
+        }
+        if (dir[0] == '\0') {
+            Serial.print(F("ERR: no direction for node ")); Serial.println(NODE_IDS[i]);
+            continue;
         }
 
         HardwareSerial& port = (NODE_PORT[i] == 2) ? Serial2 : Serial1;
