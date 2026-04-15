@@ -172,15 +172,15 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
     )
 
     if scenario == "SAFE":
-        warning_text = "✅ No Fire Detected"
+        warning_text = "[OK] No Fire Detected"
         warning_color = "green"
         warning_fontweight = "normal"
     elif scenario == "NORMAL":
-        warning_text = "⚠️ Maybe Fire (Elevated Levels)"
+        warning_text = "[!] Maybe Fire (Elevated Levels)"
         warning_color = "orange"
         warning_fontweight = "bold"
     else:
-        warning_text = "🔥 FIRE! RUN NOW!"
+        warning_text = "[FIRE] FIRE! RUN NOW!"
         warning_color = "red"
         warning_fontweight = "bold"
 
@@ -311,7 +311,7 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
         import datetime
         ts = datetime.datetime.fromtimestamp(distress_info["time"]).strftime("%H:%M:%S")
         banner = (
-            f"\U0001f198 DISTRESS \u2014 Node 7 called for help"
+            f"[SOS] DISTRESS \u2014 Node 7 called for help"
             f"  (\u00d7{distress_info['count']})  [{ts}]"
         )
         ax_map.text(
