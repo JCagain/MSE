@@ -450,8 +450,12 @@ def main():
             now = time.time()
             if now - last_countdown_update >= 1.0:
                 remaining = max(0, 15 - (now - last_push_time))
+                print(f"[countdown] {remaining:.0f}s remaining")
                 if hasattr(fig, '_countdown_text'):
                     fig._countdown_text.set_text(f"Next push: {remaining:.0f}s")
+                    print(f"[display] countdown text set to 'Next push: {remaining:.0f}s'")
+                else:
+                    print("[display] countdown text widget not found")
                 last_countdown_update = now
 
             if not plt.fignum_exists(fig.number):
