@@ -161,9 +161,22 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
                                nodelist=fire_nodes, node_size=700,
                                node_color='red', edgecolors='black')
 
-    nx.draw_networkx_nodes(G, sim.node_positions, ax=ax_map,
-                           nodelist=exits, node_size=700,
-                           node_color='lime', edgecolors='black')
+    exit_normal = [n for n in exits if sim.node_stage.get(n) == 'NORMAL']
+    exit_maybe  = [n for n in exits if sim.node_stage.get(n) == 'MAYBE FIRE']
+    exit_fire   = [n for n in exits if sim.node_stage.get(n) == 'FIRE']
+
+    if exit_normal:
+        nx.draw_networkx_nodes(G, sim.node_positions, ax=ax_map,
+                               nodelist=exit_normal, node_size=700,
+                               node_color='lime', edgecolors='black')
+    if exit_maybe:
+        nx.draw_networkx_nodes(G, sim.node_positions, ax=ax_map,
+                               nodelist=exit_maybe, node_size=700,
+                               node_color='yellow', edgecolors='black')
+    if exit_fire:
+        nx.draw_networkx_nodes(G, sim.node_positions, ax=ax_map,
+                               nodelist=exit_fire, node_size=700,
+                               node_color='red', edgecolors='black')
 
     nx.draw_networkx_labels(
         G, sim.node_positions, ax=ax_map,
