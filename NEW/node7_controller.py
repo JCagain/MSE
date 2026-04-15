@@ -440,7 +440,6 @@ def main():
                 remaining = max(0, 15 - (now - last_push_time))
                 if hasattr(fig, '_countdown_text'):
                     fig._countdown_text.set_text(f"Next push: {remaining:.0f}s")
-                    fig.canvas.draw_idle()
                 last_countdown_update = now
 
             plt.pause(0.05)   # keep GUI responsive between iterations
