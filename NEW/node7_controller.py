@@ -6,7 +6,8 @@ import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
-PORT = '/dev/cu.usbmodem5B5F0153401'
+# PORT = '/dev/cu.usbmodem5B5F0153401'  # macOS
+PORT = '/dev/ttyACM0'  # WSL/Linux
 BAUD = 9600
 
 

@@ -1,21 +1,56 @@
 # MSE — Emergency Exit System
 
-A distributed building-evacuation system built on ESP32 mesh nodes and a controller.
-Each node senses temperature and CO₂, reports to the controller over USB serial, and drives an
-exit-light display showing the nearest safe escape route. The controller runs multi-source Dijkstra continuously and pushes updated next-hop instructions to every node.
-
-```
-                 Simulated                     |              Real
-[ESP32 node]──ESP-NOW──[ESP32 node]──ESP-NOW── | ——[ESP32 gateway]──USB serial──[Controller]
-     │                      │                  |        │                              │
-  sensors               sensors                |    sensors + bridge            path computation
-  exit light            exit light             |    exit light                  desktop dashboard
-  help button           help button            |    help button                 distress alerts
-```
+A building-evacuation system. The laptop runs Dijkstra pathfinding; ESP32 nodes act as
+indicators (LED + buzzer) triggered by a button press.
 
 ---
 
-## Prerequisites
+## Active Implementation (`NEW/`)
+
+**Python-based. No Mega required.**
+
+```
+[ESP32] ──USB serial── [Laptop / Python]
+  button press → "search"        mapnode20.py  — 16-node simulation, dual-path Dijkstra
+  ← "left" / "right"             node7_controller.py — hardware bridge for Node 7
+  LED + buzzer                   sketch_apr8a.ino — ESP32 firmware (9600 baud)
+```
+
+### Quick Start (no hardware)
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install matplotlib networkx pyserial
+.venv/bin/python NEW/mapnode20.py
+```
+
+Click a node to cycle its stage (Normal → Maybe Fire → Fire). Press **Generate Scenario** to
+randomise all nodes with exactly one fire node.
+
+### With ESP32 hardware (WSL)
+
+```powershell
+# Windows PowerShell (Admin) — attach USB each session
+usbipd bind --busid <BUSID>
+usbipd attach --wsl --busid <BUSID>
+```
+
+```bash
+# WSL — one-time group setup (requires new terminal after)
+sudo usermod -a -G dialout $USER
+
+.venv/bin/python NEW/node7_controller.py
+```
+
+Press the button on the ESP32 → laptop computes direction → LED blinks.
+
+---
+
+## Legacy Java Implementation
+
+The original controller (now superseded). Documents the full architecture for reference.
+
+### Prerequisites
 
 Verify: `java -version` and `mvn -version`
 
@@ -32,14 +67,12 @@ Verify: `java -version` and `mvn -version`
 
 ---
 
-## Quick Start (no hardware required)
+### Build & run (Java)
 
 ```bash
 mvn package -q
-java -cp target/mse-controller-1.0-SNAPSHOT.jar mse.simulator.Simulator sample-topology.json config.properties
+java -jar target/mse-controller-1.0-SNAPSHOT.jar sample-topology.json config.properties
 ```
-
-A desktop window opens showing the live node table and distress alerts.
 
 ---
 
