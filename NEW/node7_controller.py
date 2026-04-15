@@ -32,7 +32,9 @@ def compute_node7_result():
             G_no_block.add_edge(u, v, weight=W)
         G_physical.add_edge(u, v, weight=L)
 
-    guide, exits = sim.compute_escape(G, G_physical, G_no_block, fire_node)
+    fire_nodes = {fire_node} if fire_node is not None else set()
+    available_exits = [ex for ex in sim.all_possible_exits if ex not in fire_nodes]
+    guide, exits = sim.compute_escape(G, G_physical, G_no_block, available_exits)
     _, main_path, main_cost, backup_path, backup_cost = guide[clicked_node]
 
     # 当前 node7：优先主路径；不行就 backup；都不行默认 right
