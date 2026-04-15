@@ -2,16 +2,59 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Last Updated: 2026-04-01
+Last Updated: 2026-04-15
 
 ## Project Overview
 
-MSE is an embedded building-evacuation system. ESP32 mesh nodes sense temperature and CO2,
-report passability to a central controller over USB serial (newline-delimited JSON), and display
-directional evacuation arrows on exit-light hardware. The controller computes shortest paths
-(Dijkstra / Yen's K-Shortest Paths) and pushes `path_push` packets back to nodes.
+MSE is a building-evacuation system. There are two implementations:
+
+### Active implementation — Python (`NEW/`)
+
+Laptop runs all pathfinding. ESP32 acts as a button + indicator only.
+
+1. **`NEW/mapnode20.py`** — simulation engine. 16-node topology, randomised fire scenarios
+   (SAFE / NORMAL / FIRE), dual-path Dijkstra via networkx, interactive matplotlib map.
+2. **`NEW/node7_controller.py`** — hardware controller. Listens on USB serial for `"search"` from
+   the ESP32, runs the simulation for Node 7, sends `"left"` or `"right"` back, and redraws the map.
+3. **`NEW/sketch_apr8a.ino`** — ESP32 sketch. Button press → sends `"search"` to laptop.
+   Receives `"left"`/`"right"` → blinks the corresponding LED + buzzer.
+
+**Serial protocol:** plain text at 9600 baud. ESP32 → laptop: `search`. Laptop → ESP32: `left` or `right`.
+
+### Legacy Java app (`src/main/java/mse/`)
+
+Earlier implementation. `EspController` reads `node_state` JSON from ESP32s, runs Dijkstra in
+Java (`PathComputationService`), sends `path_push` JSON back. No longer the active plan but kept
+for reference.
 
 ## Build & Run
+
+### Python simulation (no hardware needed)
+
+```bash
+cd NEW
+pip install matplotlib networkx pyserial   # one-time
+python mapnode20.py
+```
+
+Opens a 24×12 matplotlib window. Click any node to simulate a fire scenario — the map shows
+main path (green), backup path (orange dashed), blocked edges (red dashed), and a full data table.
+
+### Python hardware controller (ESP32 connected)
+
+1. Upload `NEW/sketch_apr8a.ino` to the ESP32 (Arduino IDE, board: Arduino Uno or compatible).
+2. Find the serial port (macOS: `/dev/cu.usbmodem…`, Linux/WSL: `/dev/ttyUSB0` or `/dev/ttyACM0`).
+3. Edit `PORT` at the top of `node7_controller.py` to match.
+4. Run:
+
+```bash
+python NEW/node7_controller.py
+```
+
+Press the button wired to pin 7 on the ESP32. The laptop computes an evacuation direction for
+Node 7, sends `"left"` or `"right"` back, and the ESP32 blinks the corresponding LED + buzzer.
+
+### Java app (legacy)
 
 ### Primary build (Maven fat jar)
 
@@ -22,28 +65,15 @@ mvn package -q
 Output: `target/mse-controller-1.0-SNAPSHOT.jar`
 The jar is self-contained (shade plugin bundles all dependencies).
 
-### Run — simulator mode (no hardware required)
-
-```bash
-java -cp target/mse-controller-1.0-SNAPSHOT.jar \
-     mse.simulator.Simulator \
-     sample-topology.json config.properties
-```
-
-### Run — mixed mode (one real node + rest simulated)
-
-Set `hardware.nodes=<node_id>` in `config.properties`. The simulator skips those node IDs so
-real hardware packets and simulated packets don't duplicate each other at the controller.
-
-### Run — hardware mode (ESP32 gateway on serial)
+### Run — laptop app (reads from Arduino Mega via USB serial)
 
 ```bash
 java -jar target/mse-controller-1.0-SNAPSHOT.jar \
      <topology.json> <config.properties>
 ```
 
-The manifest main class is `mse.controller.Controller`. If the configured serial port is absent,
-`SerialBridge` silently disables itself so the controller still runs.
+The manifest main class is `mse.controller.EspController`. If the configured serial port is absent,
+the app still starts (serial bridge silently disabled).
 
 ### Run — topology tooling CLIs
 
@@ -55,6 +85,10 @@ java -cp target/mse-controller-1.0-SNAPSHOT.jar \
 # Interactive topology builder (prompts node/edge/save/quit)
 java -cp target/mse-controller-1.0-SNAPSHOT.jar \
      mse.topology.TopologyGenerator
+
+# Compile topology.json → topology.h (for Arduino Mega firmware)
+java -cp target/mse-controller-1.0-SNAPSHOT.jar \
+     mse.topology.TopologyCompiler sample-topology.json topology.h
 ```
 
 ## Architecture
@@ -64,11 +98,10 @@ java -cp target/mse-controller-1.0-SNAPSHOT.jar \
 | Package | Key classes | Purpose |
 |---|---|---|
 | `mse` | `Node`, `Exit`, `Graph`, `PathCandidate` | Core domain model and pathfinding |
-| `mse.topology` | `TopologyLoader`, `TopologyValidator`, `TopologyGenerator` | JSON topology I/O and CLI tools |
-| `mse.controller` | `Controller`, `NodeState`, `SerialBridge`, `HeartbeatService`, `PathComputationService` | Runtime controller and serial comms |
+| `mse.topology` | `TopologyLoader`, `TopologyValidator`, `TopologyGenerator`, `TopologyCompiler` | JSON topology I/O, CLI tools, and C header generation |
+| `mse.controller` | `EspController`, `DashboardDataSource`, `NodeState` | Laptop entry point; reads USB serial from Mega |
 | `mse.dashboard` | `SwingDashboard` | Swing desktop dashboard |
-| `mse.distress` | `DistressHandler`, `DistressRecord` | Distress signal handling and notification |
-| `mse.simulator` | `Simulator`, `SimNode`, `ScenarioRunner` | In-process hardware simulator |
+| `mse.distress` | `DistressHandler`, `DistressRecord` | In-memory distress event storage |
 
 ### Core domain model (`mse`)
 
@@ -97,58 +130,50 @@ least one connection.
 Dijkstra uses `System.identityHashCode` as the node identity key in the PQ (stored in a parallel
 `hashToNode` map) because `float[]` arrays are used for PQ entries.
 
-### Controller startup sequence
-
-1. Load `topology.json` → build `Graph` + `NodeState` map
-2. Validate heartbeat timing: `node.timeout.ms > 2 × heartbeat.interval.ms` (enforced on startup, fatal if violated)
-3. Start `SerialBridge`, `HeartbeatService`, `PathComputationService`, `DistressHandler`
-4. Start node-timeout watchdog thread
-
-### Packet protocol (newline-delimited JSON over serial)
+### USB protocol (ESP32 ↔ Laptop, newline-delimited JSON)
 
 | Packet type | Direction | Description |
 |---|---|---|
-| `routing` | Node → Controller | Sensor readings + passability report |
-| `heartbeat_ack` | Gateway → Controller | Confirms gateway is alive |
-| `distress` | Node → Controller | Occupant pressed distress button |
-| `path_push` | Controller → Node | Computed next-hop for evacuation routing |
-| `distress_ack` | Controller → Node | Acknowledges distress receipt |
+| `node_state` | ESP32 → Laptop | Sensor readings (temp, co2) from a node |
+| `distress` | ESP32 → Laptop | Distress signal raised at a node |
+| `distress_ack` | Laptop → ESP32 | Acknowledges distress receipt |
+| `path_push` | Laptop → ESP32 | Evacuation direction after Dijkstra |
 
-### Gateway node
-
-The gateway ESP32 serves a dual role: serial bridge to the controller, and a full mesh node with
-its own sensors and exit light. It must be listed in `topology.json` as a normal node. It sends
-both `heartbeat_ack` (bridge role) and `routing` packets (node role), and receives `path_push`
-like any other node.
-
-### Mixed hardware + simulator
-
-`hardware.nodes` in `config.properties` lists node IDs handled by real hardware
-(comma-separated). `Simulator` skips creating `SimNode`s for those IDs, so the controller
-receives exactly one stream of packets per node regardless of source.
-
-### Simulator in-process wiring
-
-```
-SimNode → Simulator.toController() → Controller.handlePacket()
-Controller.onPathResults() → Controller.simulatorSink → Simulator.fromController() → SimNode.receive()
+**node_state** (sent by ESP32 periodically):
+```json
+{"type": "node_state", "node_id": "1B", "temp": 25.0, "co2": 0.08}
 ```
 
-Gossip: when a `SimNode` sends a `routing` packet, `Simulator` also delivers it to that node's
-direct neighbors so they can update their gossip table (mesh fallback mode).
+**path_push** (sent by laptop after each Dijkstra run):
+```json
+{"type": "path_push", "node_id": "1B", "direction": "right"}
+```
+
+Each ESP32 connects to the laptop via USB serial. Port-to-node mapping is learned dynamically:
+the first `node_state` packet from a port associates that node ID with that port's writer.
+Only wired (connected) nodes receive `path_push`; topology-only nodes are skipped.
 
 ### Dashboard
 
-`SwingDashboard` opens a Swing JFrame automatically on controller start. It updates on every path
-recomputation. Requires a display server — on WSL, enable WSLg or run from Windows PowerShell.
+`SwingDashboard` opens a Swing JFrame automatically on laptop app start. It implements the
+`DashboardDataSource` interface, which `EspController` drives on every `state_snapshot` received.
+Requires a display server — on WSL, enable WSLg or run from Windows PowerShell.
 
 ### Distress handling
 
-`DistressHandler` on receiving a `distress` packet:
-1. Appends a JSON-Lines entry to `distress-log.jsonl`
-2. Sends SMS via Twilio REST API (direct `HttpClient` POST — no Twilio SDK)
-3. HTTP POSTs to `api.endpoint` (if configured)
-4. Failed notifications enter a retry queue, persisted to `distress-retry-queue.json` across restarts
+`DistressHandler` stores distress events in memory for display on the dashboard. It does **not**
+send SMS or make external HTTP calls.
+
+### ESP32 gateway sketches
+
+`esp32_gateway/esp32_gateway.ino` — Tinkercad-compatible single-file sketch. No external
+libraries. Reads `path_push` from Mega via UART (Serial at 115200 baud), matches own `MY_NODE_ID`,
+and stores the current direction string.
+
+`esp32_gateway/speaker_and_led1.ino` — Extended sketch for Node 5 (`MY_NODE_ID "5"`) with speaker
+(pin 8) and dual LED output (LED_LEFT pin 13, LED_RIGHT pin 12). Also uses 115200 baud.
+Uses `Serial.readStringUntil('\n')` so it works in Tinkercad's Serial Monitor, which does not
+send a line terminator.
 
 ## Directory Structure
 
@@ -158,50 +183,45 @@ MSE/
 ├── config.properties                # Runtime configuration
 ├── sample-topology.json             # 4-node sample building topology
 ├── sample-scenario.json             # Scripted demo scenario (fire spreading)
+├── esp32_gateway/
+│   ├── esp32_gateway.ino            # Main Tinkercad-compatible ESP32 sketch
+│   └── speaker_and_led1.ino        # Node 5 variant with speaker + LED
+├── mega/                            # Arduino Mega firmware (feat/mega-firmware, PR open)
+│   ├── topology.h                   # Auto-generated by TopologyCompiler — do not edit
+│   ├── node_state.h / node_state.cpp
+│   ├── dijkstra.h / dijkstra.cpp
+│   ├── serial_laptop.h / serial_laptop.cpp
+│   ├── serial_mesh.h / serial_mesh.cpp
+│   ├── mega.ino                     # Main sketch entry point
+│   └── test_dijkstra/
+│       └── test_dijkstra.ino        # Standalone Dijkstra test sketch
 └── src/main/java/mse/
     ├── Node.java                    # Core domain model
     ├── Exit.java                    # Exit node subclass
     ├── Graph.java                   # Node registry + validation
     ├── PathCandidate.java           # Path + distance value object
     ├── controller/
-    │   ├── Controller.java          # Main controller (entry point for hardware mode)
-    │   ├── NodeState.java           # Runtime state per mesh node
-    │   ├── SerialBridge.java        # USB serial <-> JSON bridge (jSerialComm)
-    │   ├── HeartbeatService.java    # Periodic heartbeat + gateway reachability
-    │   └── PathComputationService.java  # Scheduled Dijkstra + broadcast
+    │   ├── EspController.java          # Entry point; reads USB serial from Mega
+    │   ├── DashboardDataSource.java # Interface decoupling dashboard from EspController
+    │   └── NodeState.java           # Runtime state per mesh node
     ├── dashboard/
     │   └── SwingDashboard.java      # Swing desktop dashboard
     ├── distress/
-    │   ├── DistressHandler.java     # SMS/HTTP notification + retry queue
+    │   ├── DistressHandler.java     # In-memory distress event store
     │   └── DistressRecord.java      # Distress event value object
-    ├── simulator/
-    │   ├── Simulator.java           # In-process simulator (entry point for sim mode)
-    │   ├── SimNode.java             # Virtual mesh node
-    │   └── ScenarioRunner.java      # Scripted scenario replay
     └── topology/
         ├── TopologyLoader.java      # Parses topology.json into Graph
+        ├── TopologyCompiler.java    # Generates topology.h for Arduino Mega firmware
         ├── TopologyValidator.java   # CLI validator (checks symmetry, references)
-        └── TopologyGenerator.java   # Interactive CLI topology builder
+        └── TopologyGenerator.java  # Interactive CLI topology builder
 ```
 
 ## Configuration (`config.properties`)
 
 | Key | Default | Description |
 |---|---|---|
-| `serial.port` | `/dev/ttyUSB0` | Serial port for gateway ESP32 |
-| `heartbeat.interval.ms` | `5000` | How often to send heartbeat pings |
-| `node.timeout.ms` | `20000` | Node marked offline after this idle period (must be > 2x heartbeat) |
-| `broadcast.interval.ms` | `3000` | Minimum interval between path-push broadcasts |
-| `hardware.nodes` | _(blank)_ | Comma-separated node IDs on real hardware (simulator skips these) |
-| `sms.recipients` | _(blank)_ | Comma-separated phone numbers for distress SMS |
-| `api.endpoint` | _(blank)_ | HTTP POST endpoint for distress notifications |
-| `api.timeout.ms` | `5000` | Timeout for external API calls |
-| `controller.distress.notification.retry.interval.ms` | `10000` | Retry interval for failed distress notifications |
-| `twilio.account.sid` | _(blank)_ | Twilio credentials (leave blank to disable SMS) |
-| `twilio.auth.token` | _(blank)_ | Twilio credentials |
-| `twilio.from.number` | _(blank)_ | Twilio sender number |
-| `cellular.fallback.enabled` | `false` | Enable cellular fallback (not yet implemented) |
-| `mesh.fallback.min.coverage.pct` | `50` | Min % of nodes needed before mesh fallback triggers |
+| `serial.port.1` | `/dev/ttyUSB0` | Serial port for first ESP32 node (USB) |
+| `serial.port.2` | `/dev/ttyUSB1` | Serial port for second ESP32 node (USB) |
 
 ## Topology JSON Format
 
@@ -222,20 +242,7 @@ Each node entry in `topology.json`:
 
 Edges must be listed symmetrically (A lists B and B lists A with the same `edge_weight`).
 `TopologyValidator` enforces this. `is_exit: true` nodes become `Exit` instances in the graph.
-
-## Scenario JSON Format
-
-```json
-{
-  "description": "Fire starts at 1A, spreads toward 1C",
-  "steps": [
-    { "delay_ms": 3000, "node_id": "1A", "temperature": 80.0, "co2": 0.1 }
-  ]
-}
-```
-
-`delay_ms` is relative to `ScenarioRunner.start()`, not cumulative. Steps are scheduled
-concurrently via `ScheduledExecutorService`.
+`TopologyCompiler` uses the `direction` field to generate the `DIRECTIONS` array in `topology.h`.
 
 ## Dependencies (Maven)
 
@@ -248,6 +255,7 @@ Java target: 17.
 
 ## Known Issues / TODOs
 
-- `cellular.fallback.enabled` is wired into config but the cellular fallback path is not yet implemented.
 - `SwingDashboard` requires a display server. On WSL, enable WSLg (`wsl --update` in PowerShell)
   or run the jar from Windows PowerShell directly.
+- ESP32 sketches (`esp32_gateway/`) still need the uplink (`node_state` packet sender) added by
+  the hardware teammate — the laptop is ready to receive them.
