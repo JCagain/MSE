@@ -442,6 +442,8 @@ def main():
                     fig._countdown_text.set_text(f"Next push: {remaining:.0f}s")
                 last_countdown_update = now
 
+            if not plt.fignum_exists(fig.number):
+                break
             plt.pause(0.05)   # keep GUI responsive between iterations
     finally:
         try:
