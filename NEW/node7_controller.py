@@ -81,7 +81,7 @@ def compute_node7_result():
     }
 
 
-def draw_full_result(fig, result, clicked_node=7):
+def draw_full_result(fig, result, clicked_node=7, distress_info=None):
     fig.clear()
 
     gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 2.05])
@@ -304,6 +304,24 @@ def draw_full_result(fig, result, clicked_node=7):
         transform=ax_info.transAxes, va='top',
         bbox=dict(boxstyle='square,pad=0.3', facecolor='white', alpha=0.98, lw=0.8)
     )
+
+    if distress_info is not None:
+        import datetime
+        ts = datetime.datetime.fromtimestamp(distress_info["time"]).strftime("%H:%M:%S")
+        banner = (
+            f"\U0001f198 DISTRESS \u2014 Node 7 called for help"
+            f"  (\u00d7{distress_info['count']})  [{ts}]"
+        )
+        ax_map.text(
+            0.5, 0.015, banner,
+            transform=ax_map.transAxes,
+            fontsize=13,
+            fontweight="bold",
+            color="white",
+            ha="center",
+            va="bottom",
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="red", alpha=0.92),
+        )
 
     plt.tight_layout()
     plt.draw()

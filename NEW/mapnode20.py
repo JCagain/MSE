@@ -112,6 +112,18 @@ def _global_scenario():
     if 'MAYBE FIRE' in stages: return 'MAYBE FIRE'
     return 'NORMAL'
 
+def generate_fire_data(clicked_node):
+    """Generate random fire scenario and return edge_data, node_temp, node_co2, fire_node, scenario."""
+    generate_all_random()
+    fire_node = None
+    for n in all_nodes:
+        if node_stage[n] == 'FIRE':
+            fire_node = n
+            break
+    edge_data = _edge_data_from_state()
+    scenario = _global_scenario()
+    return edge_data, dict(node_temp), dict(node_co2), fire_node, scenario
+
 # ==============================================
 # Escape path computation
 # ==============================================
