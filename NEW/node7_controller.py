@@ -4,6 +4,7 @@ import time
 import networkx as nx
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
 
 # PORT = '/dev/cu.usbmodem5B5F0153401'  # macOS
 PORT = '/dev/ttyACM0'  # WSL/Linux
@@ -325,6 +326,14 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
         )
 
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.10)
+
+    if hasattr(fig, '_on_generate'):
+        btn_ax = fig.add_axes([0.40, 0.02, 0.20, 0.06])
+        btn = Button(btn_ax, 'Generate Scenario')
+        btn.on_clicked(fig._on_generate)
+        fig._generate_btn = btn  # prevent garbage collection
+
     plt.draw()
 
 
@@ -340,6 +349,16 @@ def main():
     distress_count = 0
     distress_time = None
     last_result = None
+
+    def on_generate(event):
+        nonlocal last_result
+        sim.generate_all_random()
+        last_result = compute_node7_result()
+        di = {"count": distress_count, "time": distress_time} if distress_time is not None else None
+        draw_full_result(fig, last_result, clicked_node=7, distress_info=di)
+        plt.pause(0.1)
+
+    fig._on_generate = on_generate
 
     def on_node_click(event):
         nonlocal last_result
