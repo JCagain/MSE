@@ -371,9 +371,12 @@ def main():
 
     def on_node_click(event):
         nonlocal last_result, last_countdown_update
+        print(f"[click] xdata={event.xdata} ydata={event.ydata} inaxes={event.inaxes}")
         if event.xdata is None or event.ydata is None:
+            print("[click] ignored: outside axes")
             return
         if len(fig.axes) < 2 or event.inaxes != fig.axes[1]:
+            print("[click] ignored: not in map axes")
             return
         min_dist, target = float('inf'), None
         for node, (x, y) in sim.node_positions.items():
@@ -381,12 +384,17 @@ def main():
             if d < min_dist and d < 0.8:
                 min_dist, target = d, node
         if target is not None:
+            new_stage = sim.node_stage[target]
+            print(f"[click] node {target} -> {new_stage} (dist={min_dist:.3f})")
             sim.cycle_node(target)
+            print(f"[click] node {target} stage cycled to {sim.node_stage[target]}")
             last_result = compute_node7_result()
             di = {"count": distress_count, "time": distress_time} if distress_time is not None else None
             draw_full_result(fig, last_result, clicked_node=7, distress_info=di)
             last_countdown_update = 0.0
             plt.pause(0.1)
+        else:
+            print(f"[click] no node within threshold (closest dist={min_dist:.3f})")
 
     fig.canvas.mpl_connect('button_press_event', on_node_click)
 
