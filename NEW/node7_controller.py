@@ -337,32 +337,57 @@ def main():
     plt.ion()
     fig = plt.figure(figsize=(14, 7), dpi=100)
 
-    print("Python controller ready. Press the button on ESP32.")
+    last_push_time = 0.0   # 0 forces an immediate push on startup
+    distress_count = 0
+    distress_time = None
+    last_result = None
+
+    print("Python controller ready. Pushing direction every 15s.")
 
     while True:
+        # --- 15-second proactive push ---
+        if time.time() - last_push_time >= 15:
+            last_result = compute_node7_result()
+
+            print("------ Scheduled Push ------")
+            print(f"Scenario   : {last_result['scenario']}")
+            print(f"Fire Node  : {last_result['fire_node']}")
+            print(f"Path Type  : {last_result['path_type']}")
+            print(f"Main Path  : {last_result['main_path']}")
+            print(f"Backup Path: {last_result['backup_path']}")
+            print(f"Send       : {last_result['direction']}")
+            print("----------------------------")
+
+            distress_info = (
+                {"count": distress_count, "time": distress_time}
+                if distress_time is not None else None
+            )
+            draw_full_result(fig, last_result, clicked_node=7,
+                             distress_info=distress_info)
+            plt.pause(0.1)
+
+            ser.write((last_result["direction"] + '\n').encode())
+            ser.flush()
+            last_push_time = time.time()
+
+        # --- Serial read ---
         if ser.in_waiting > 0:
             msg = ser.readline().decode('utf-8').strip()
-
             if msg:
                 print(f"From ESP32: {msg}")
 
             if msg == "search":
-                result = compute_node7_result()
+                distress_count += 1
+                distress_time = time.time()
+                print(f"DISTRESS received (#{distress_count})")
 
-                print("------ New Search Triggered ------")
-                print(f"Scenario   : {result['scenario']}")
-                print(f"Fire Node  : {result['fire_node']}")
-                print(f"Path Type  : {result['path_type']}")
-                print(f"Main Path  : {result['main_path']}")
-                print(f"Backup Path: {result['backup_path']}")
-                print(f"Send       : {result['direction']}")
-                print("----------------------------------")
+                if last_result is not None:
+                    distress_info = {"count": distress_count, "time": distress_time}
+                    draw_full_result(fig, last_result, clicked_node=7,
+                                     distress_info=distress_info)
+                    plt.pause(0.1)
 
-                draw_full_result(fig, result, clicked_node=7)
-                plt.pause(0.1)
-
-                ser.write((result["direction"] + '\n').encode())
-                ser.flush()
+        plt.pause(0.05)   # keep GUI responsive between iterations
 
 
 if __name__ == "__main__":
