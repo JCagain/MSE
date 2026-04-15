@@ -334,6 +334,12 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
         btn.on_clicked(fig._on_generate)
         fig._generate_btn = btn  # prevent garbage collection
 
+    fig._countdown_text = fig.text(
+        0.99, 0.04, "",
+        fontsize=9, ha='right', va='bottom', color='gray',
+        transform=fig.transFigure,
+    )
+
     plt.draw()
 
 
@@ -350,6 +356,7 @@ def main():
     distress_count = 0
     distress_time = None
     last_result = None
+    last_countdown_update = 0.0
 
     def on_generate(event):
         nonlocal last_result
@@ -426,6 +433,15 @@ def main():
                         draw_full_result(fig, last_result, clicked_node=7,
                                          distress_info=distress_info)
                         plt.pause(0.1)
+
+            # --- Countdown update (once per second) ---
+            now = time.time()
+            if now - last_countdown_update >= 1.0:
+                remaining = max(0, 15 - (now - last_push_time))
+                if hasattr(fig, '_countdown_text'):
+                    fig._countdown_text.set_text(f"Next push: {remaining:.0f}s")
+                    fig.canvas.draw_idle()
+                last_countdown_update = now
 
             plt.pause(0.05)   # keep GUI responsive between iterations
     finally:
