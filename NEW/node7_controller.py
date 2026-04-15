@@ -3,7 +3,6 @@ import serial
 import time
 import networkx as nx
 import matplotlib
-matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 # PORT = '/dev/cu.usbmodem5B5F0153401'  # macOS
@@ -311,6 +310,7 @@ def draw_full_result(fig, result, clicked_node=7):
 
 
 def main():
+    matplotlib.use('TkAgg')
     ser = serial.Serial(PORT, BAUD, timeout=1)
     time.sleep(2)
 
