@@ -359,17 +359,18 @@ def main():
     last_countdown_update = 0.0
 
     def on_generate(event):
-        nonlocal last_result
+        nonlocal last_result, last_countdown_update
         sim.generate_all_random()
         last_result = compute_node7_result()
         di = {"count": distress_count, "time": distress_time} if distress_time is not None else None
         draw_full_result(fig, last_result, clicked_node=7, distress_info=di)
+        last_countdown_update = 0.0
         plt.pause(0.1)
 
     fig._on_generate = on_generate
 
     def on_node_click(event):
-        nonlocal last_result
+        nonlocal last_result, last_countdown_update
         if event.xdata is None or event.ydata is None:
             return
         if len(fig.axes) < 2 or event.inaxes != fig.axes[1]:
@@ -384,6 +385,7 @@ def main():
             last_result = compute_node7_result()
             di = {"count": distress_count, "time": distress_time} if distress_time is not None else None
             draw_full_result(fig, last_result, clicked_node=7, distress_info=di)
+            last_countdown_update = 0.0
             plt.pause(0.1)
 
     fig.canvas.mpl_connect('button_press_event', on_node_click)
