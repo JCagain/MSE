@@ -367,7 +367,6 @@ def main():
         di = {"count": distress_count, "time": distress_time} if distress_time is not None else None
         draw_full_result(fig, last_result, clicked_node=7, distress_info=di)
         last_countdown_update = 0.0
-        plt.pause(0.1)
 
     fig._on_generate = on_generate
 
@@ -394,7 +393,6 @@ def main():
             di = {"count": distress_count, "time": distress_time} if distress_time is not None else None
             draw_full_result(fig, last_result, clicked_node=7, distress_info=di)
             last_countdown_update = 0.0
-            plt.pause(0.1)
         else:
             print(f"[click] no node within threshold (closest dist={min_dist:.3f})")
 
