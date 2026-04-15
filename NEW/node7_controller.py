@@ -144,23 +144,26 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
             edgelist=path_edges, edge_color='orange', width=4, alpha=0.9, style='--'
         )
 
-    nx.draw_networkx_nodes(
-        G, sim.node_positions, ax=ax_map,
-        nodelist=sim.all_nodes, node_size=500,
-        node_color='white', edgecolors='black'
-    )
-    nx.draw_networkx_nodes(
-        G, sim.node_positions, ax=ax_map,
-        nodelist=exits, node_size=700,
-        node_color='lime', edgecolors='black'
-    )
+    normal_nodes = [n for n in sim.all_nodes if n not in exits and sim.node_stage.get(n) == 'NORMAL']
+    maybe_nodes  = [n for n in sim.all_nodes if n not in exits and sim.node_stage.get(n) == 'MAYBE FIRE']
+    fire_nodes   = [n for n in sim.all_nodes if n not in exits and sim.node_stage.get(n) == 'FIRE']
 
-    if fire_node is not None:
-        nx.draw_networkx_nodes(
-            G, sim.node_positions, ax=ax_map,
-            nodelist=[fire_node], node_size=900,
-            node_color='red', edgecolors='black'
-        )
+    if normal_nodes:
+        nx.draw_networkx_nodes(G, sim.node_positions, ax=ax_map,
+                               nodelist=normal_nodes, node_size=500,
+                               node_color='white', edgecolors='black')
+    if maybe_nodes:
+        nx.draw_networkx_nodes(G, sim.node_positions, ax=ax_map,
+                               nodelist=maybe_nodes, node_size=500,
+                               node_color='yellow', edgecolors='black')
+    if fire_nodes:
+        nx.draw_networkx_nodes(G, sim.node_positions, ax=ax_map,
+                               nodelist=fire_nodes, node_size=700,
+                               node_color='red', edgecolors='black')
+
+    nx.draw_networkx_nodes(G, sim.node_positions, ax=ax_map,
+                           nodelist=exits, node_size=700,
+                           node_color='lime', edgecolors='black')
 
     nx.draw_networkx_labels(
         G, sim.node_positions, ax=ax_map,
