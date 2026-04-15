@@ -84,6 +84,8 @@ def compute_node7_result():
 
 
 def draw_full_result(fig, result, clicked_node=7, distress_info=None):
+    print(f"[draw] scenario={result['scenario']} fire_node={result['fire_node']} "
+          f"direction={result['direction']} distress={distress_info is not None}")
     fig.clear()
 
     gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 2.05])
