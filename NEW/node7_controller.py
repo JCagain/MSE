@@ -342,6 +342,7 @@ def main():
     ser = serial.Serial(PORT, BAUD, timeout=1)
     time.sleep(2)
 
+    matplotlib.rcParams['toolbar'] = 'None'
     plt.ion()
     fig = plt.figure(figsize=(14, 7), dpi=100)
 
