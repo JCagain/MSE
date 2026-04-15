@@ -13,8 +13,7 @@ BAUD = 9600
 def compute_node7_result():
     clicked_node = 7
 
-    # 每次触发都重新随机一次
-    edge_data, node_temp, node_co2, fire_node, scenario = sim.generate_fire_data(clicked_node)
+    edge_data, node_temp, node_co2, fire_node, scenario = sim.get_current_state()
 
     G = nx.Graph()
     G_no_block = nx.Graph()
@@ -342,52 +341,80 @@ def main():
     distress_time = None
     last_result = None
 
-    print("Python controller ready. Pushing direction every 15s.")
-
-    while True:
-        # --- 15-second proactive push ---
-        if time.time() - last_push_time >= 15:
+    def on_node_click(event):
+        nonlocal last_result
+        if event.xdata is None or event.ydata is None:
+            return
+        if len(fig.axes) < 2 or event.inaxes != fig.axes[1]:
+            return
+        min_dist, target = float('inf'), None
+        for node, (x, y) in sim.node_positions.items():
+            d = (event.xdata - x) ** 2 + (event.ydata - y) ** 2
+            if d < min_dist and d < 0.8:
+                min_dist, target = d, node
+        if target is not None:
+            sim.cycle_node(target)
             last_result = compute_node7_result()
-
-            print("------ Scheduled Push ------")
-            print(f"Scenario   : {last_result['scenario']}")
-            print(f"Fire Node  : {last_result['fire_node']}")
-            print(f"Path Type  : {last_result['path_type']}")
-            print(f"Main Path  : {last_result['main_path']}")
-            print(f"Backup Path: {last_result['backup_path']}")
-            print(f"Send       : {last_result['direction']}")
-            print("----------------------------")
-
-            distress_info = (
-                {"count": distress_count, "time": distress_time}
-                if distress_time is not None else None
-            )
-            draw_full_result(fig, last_result, clicked_node=7,
-                             distress_info=distress_info)
+            di = {"count": distress_count, "time": distress_time} if distress_time is not None else None
+            draw_full_result(fig, last_result, clicked_node=7, distress_info=di)
             plt.pause(0.1)
 
-            ser.write((last_result["direction"] + '\n').encode())
+    fig.canvas.mpl_connect('button_press_event', on_node_click)
+
+    print("Python controller ready. Pushing direction every 15s. Click nodes to cycle stage.")
+
+    try:
+        while True:
+            # --- 15-second proactive push ---
+            if time.time() - last_push_time >= 15:
+                last_result = compute_node7_result()
+
+                print("------ Scheduled Push ------")
+                print(f"Scenario   : {last_result['scenario']}")
+                print(f"Fire Node  : {last_result['fire_node']}")
+                print(f"Path Type  : {last_result['path_type']}")
+                print(f"Main Path  : {last_result['main_path']}")
+                print(f"Backup Path: {last_result['backup_path']}")
+                print(f"Send       : {last_result['direction']}")
+                print("----------------------------")
+
+                distress_info = (
+                    {"count": distress_count, "time": distress_time}
+                    if distress_time is not None else None
+                )
+                draw_full_result(fig, last_result, clicked_node=7,
+                                 distress_info=distress_info)
+                plt.pause(0.1)
+
+                ser.write((last_result["direction"] + '\n').encode())
+                ser.flush()
+                last_push_time = time.time()
+
+            # --- Serial read ---
+            if ser.in_waiting > 0:
+                msg = ser.readline().decode('utf-8').strip()
+                if msg:
+                    print(f"From ESP32: {msg}")
+
+                if msg == "search":
+                    distress_count += 1
+                    distress_time = time.time()
+                    print(f"DISTRESS received (#{distress_count})")
+
+                    if last_result is not None:
+                        distress_info = {"count": distress_count, "time": distress_time}
+                        draw_full_result(fig, last_result, clicked_node=7,
+                                         distress_info=distress_info)
+                        plt.pause(0.1)
+
+            plt.pause(0.05)   # keep GUI responsive between iterations
+    finally:
+        try:
+            ser.write(b"idle\n")
             ser.flush()
-            last_push_time = time.time()
-
-        # --- Serial read ---
-        if ser.in_waiting > 0:
-            msg = ser.readline().decode('utf-8').strip()
-            if msg:
-                print(f"From ESP32: {msg}")
-
-            if msg == "search":
-                distress_count += 1
-                distress_time = time.time()
-                print(f"DISTRESS received (#{distress_count})")
-
-                if last_result is not None:
-                    distress_info = {"count": distress_count, "time": distress_time}
-                    draw_full_result(fig, last_result, clicked_node=7,
-                                     distress_info=distress_info)
-                    plt.pause(0.1)
-
-        plt.pause(0.05)   # keep GUI responsive between iterations
+        except Exception:
+            pass
+        ser.close()
 
 
 if __name__ == "__main__":

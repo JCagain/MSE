@@ -112,6 +112,13 @@ def _global_scenario():
     if 'MAYBE FIRE' in stages: return 'MAYBE FIRE'
     return 'NORMAL'
 
+def get_current_state():
+    """Return current node stage state without randomizing."""
+    fire_node = next((n for n in all_nodes if node_stage[n] == 'FIRE'), None)
+    edge_data = _edge_data_from_state()
+    scenario = _global_scenario()
+    return edge_data, dict(node_temp), dict(node_co2), fire_node, scenario
+
 def generate_fire_data(clicked_node):
     """Generate random fire scenario and return edge_data, node_temp, node_co2, fire_node, scenario."""
     generate_all_random()
