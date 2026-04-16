@@ -5,6 +5,7 @@ import networkx as nx
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
+from matplotlib.patches import Rectangle as MplRect
 
 # PORT = '/dev/cu.usbmodem5B5F0153401'  # macOS
 PORT = '/dev/ttyACM0'  # WSL/Linux
@@ -94,6 +95,7 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
 
     ax_info.axis('off')
     ax_map.set_aspect('equal', adjustable='box')
+    ax_map.set_anchor('W')
     ax_map.axis('off')
 
     ax_map.set_xlim(-5, 12)
@@ -189,16 +191,17 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
         edge_labels=edge_labels, font_size=9
     )
 
-    if scenario == "SAFE":
-        warning_text = "[OK] No Fire Detected"
+    node7_stage = sim.node_stage.get(clicked_node, 'NORMAL')
+    if node7_stage == 'NORMAL':
+        warning_text = f"[OK] Node {clicked_node}: Clear"
         warning_color = "green"
         warning_fontweight = "normal"
-    elif scenario == "NORMAL":
-        warning_text = "[!] Maybe Fire (Elevated Levels)"
+    elif node7_stage == 'MAYBE FIRE':
+        warning_text = f"[!] Node {clicked_node}: Maybe Fire"
         warning_color = "orange"
         warning_fontweight = "bold"
     else:
-        warning_text = "[FIRE] FIRE! RUN NOW!"
+        warning_text = f"[FIRE] Node {clicked_node}: FIRE!"
         warning_color = "red"
         warning_fontweight = "bold"
 
@@ -222,21 +225,29 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
         bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.9)
     )
 
-    info = f"Clicked Node: {clicked_node}\n"
-    if fire_node is not None:
-        info += f"Fire Node: {fire_node}\n"
-    info += f"Exits: {exits}\n"
-    info += f"Send Direction: {result['direction']}\n"
-    info += f"Path Type: {result['path_type']}\n\n"
+    FONTSIZE = 6.5
+    LINE_H = 0.018  # line height in axes-fraction units
 
-    info += "=== Node Data & Escape Route ===\n"
+    info_lines = []  # list of (text, bg_color_or_None)
+
+    # Summary header
+    info_lines.append((f"Clicked Node: {clicked_node}", None))
+    if fire_node is not None:
+        info_lines.append((f"Fire Node: {fire_node}", None))
+    info_lines.append((f"Exits: {exits}", None))
+    info_lines.append((f"Send Direction: {result['direction']}", None))
+    info_lines.append((f"Path Type: {result['path_type']}", None))
+    info_lines.append(("", None))
+
+    # Node table
+    info_lines.append(("=== Node Data & Escape Route ===", None))
     COL_NODE = 6
     COL_TEMP = 10
     COL_CO2 = 11
-    COL_MOVETIME = 15
+    COL_MOVETIME = 20
     COL_COST = 12
-    COL_ROUTE = 20
-    COL_BACKUP = 20
+    COL_ROUTE = 32
+    COL_BACKUP = 32
 
     header1 = (
         f"{'Node':<{COL_NODE}}"
@@ -247,10 +258,18 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
         f"{'MainRoute':<{COL_ROUTE}}"
         f"{'BackupRoute':<{COL_BACKUP}}"
     )
-    info += header1 + "\n"
-    info += "-" * len(header1) + "\n"
+    info_lines.append((header1, None))
+    info_lines.append(("-" * len(header1), None))
 
     for n in sorted(sim.all_nodes):
+        stage = sim.node_stage.get(n, 'NORMAL')
+        if stage == 'FIRE':
+            row_bg = '#ffaaaa'
+        elif stage == 'MAYBE FIRE':
+            row_bg = '#ffff99'
+        else:
+            row_bg = None
+
         if n in exits:
             line = (
                 f"{n:<{COL_NODE}}"
@@ -286,10 +305,12 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
                 f"{main_route:<{COL_ROUTE}}"
                 f"{backup_route:<{COL_BACKUP}}"
             )
-            info += line + "\n"
+        info_lines.append((line, row_bg))
 
-    info += "\n"
-    info += "=== Edge Environment Data ===\n"
+    info_lines.append(("", None))
+
+    # Edge table
+    info_lines.append(("=== Edge Environment Data ===", None))
     COL_EDGE = 10
     COL_LEN = 8
     COL_ETEMP = 10
@@ -303,8 +324,8 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
         f"{'AvgCO2':<{COL_ECO2}}"
         f"{'EffLen':<{COL_EFFLEN}}"
     )
-    info += header2 + "\n"
-    info += "-" * len(header2) + "\n"
+    info_lines.append((header2, None))
+    info_lines.append(("-" * len(header2), None))
 
     for a, b, L, T, C, W in sorted(edge_data):
         edge_str = f"{a}-{b}"
@@ -316,14 +337,29 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
             f"{C:<{COL_ECO2}.1f}"
             f"{eff_len_str:<{COL_EFFLEN}}"
         )
-        info += line + "\n"
+        info_lines.append((line, None))
 
-    ax_info.text(
-        0.01, 0.99, info,
-        fontsize=6.5, family='monospace',
-        transform=ax_info.transAxes, va='top',
-        bbox=dict(boxstyle='square,pad=0.3', facecolor='white', alpha=0.98, lw=0.8)
-    )
+    # White background for the whole info panel
+    ax_info.add_patch(MplRect(
+        (0, 0), 1, 1, facecolor='white', alpha=0.98,
+        edgecolor='#aaaaaa', lw=0.8,
+        transform=ax_info.transAxes, zorder=0, clip_on=False
+    ))
+
+    for i, (text, bg) in enumerate(info_lines):
+        y_top = 0.99 - i * LINE_H
+        if bg is not None:
+            ax_info.add_patch(MplRect(
+                (0, y_top - LINE_H), 1.0, LINE_H,
+                facecolor=bg, alpha=0.85, lw=0,
+                transform=ax_info.transAxes, clip_on=True, zorder=1
+            ))
+        if text:
+            ax_info.text(
+                0.01, y_top, text,
+                fontsize=FONTSIZE, family='monospace',
+                transform=ax_info.transAxes, va='top', zorder=2
+            )
 
     if distress_info is not None:
         import datetime
@@ -344,7 +380,7 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
         )
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.10)
+    plt.subplots_adjust(bottom=0.10, wspace=0.02)
 
     if hasattr(fig, '_on_generate'):
         btn_ax = fig.add_axes([0.40, 0.02, 0.20, 0.06])
@@ -354,7 +390,7 @@ def draw_full_result(fig, result, clicked_node=7, distress_info=None):
 
     fig._countdown_text = fig.text(
         0.99, 0.04, "",
-        fontsize=9, ha='right', va='bottom', color='gray',
+        fontsize=16, ha='right', va='bottom', color='gray',
         transform=fig.transFigure,
     )
 
@@ -368,7 +404,7 @@ def main():
 
     matplotlib.rcParams['toolbar'] = 'None'
     plt.ion()
-    fig = plt.figure(figsize=(14, 7), dpi=100)
+    fig = plt.figure(figsize=(15, 8), dpi=100)
 
     last_push_time = 0.0   # 0 forces an immediate push on startup
     distress_count = 0
@@ -450,15 +486,17 @@ def main():
                     print(f"From ESP32: {msg}")
 
                 if msg == "search":
-                    distress_count += 1
-                    distress_time = time.time()
-                    print(f"DISTRESS received (#{distress_count})")
+                    now_t = time.time()
+                    if distress_time is None or (now_t - distress_time) > 2.0:
+                        distress_count += 1
+                        distress_time = now_t
+                        print(f"DISTRESS received (#{distress_count})")
 
-                    if last_result is not None:
-                        distress_info = {"count": distress_count, "time": distress_time}
-                        draw_full_result(fig, last_result, clicked_node=7,
-                                         distress_info=distress_info)
-                        plt.pause(0.1)
+                        if last_result is not None:
+                            distress_info = {"count": distress_count, "time": distress_time}
+                            draw_full_result(fig, last_result, clicked_node=7,
+                                             distress_info=distress_info)
+                            plt.pause(0.1)
 
             # --- Countdown update (once per second) ---
             now = time.time()

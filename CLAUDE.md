@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Last Updated: 2026-04-15
+Last Updated: 2026-04-16
 
 ## Project Overview
 
@@ -19,8 +19,15 @@ Laptop runs all pathfinding. ESP32 acts as a button + indicator only.
    - Warning banner reflects the selected node's own stage
 2. **`NEW/node7_controller.py`** — hardware controller. Listens on USB serial for `"search"` from
    the ESP32, runs the simulation for Node 7, sends `"left"` or `"right"` back, and redraws the map.
+   - Left panel: monospace table of all 16 nodes; rows highlighted yellow (MAYBE FIRE) or red (FIRE)
+   - Top banner reflects Node 7's own stage (not global scenario)
+   - SOS counter has a 2-second debounce to prevent button-bounce inflation
+   - Countdown timer (next 15-second push) shown at bottom-right, fontsize 16
 3. **`NEW/sketch_apr8a.ino`** — ESP32 sketch (9600 baud). Button press → sends `"search"` to
    laptop. Receives `"left"`/`"right"` → blinks the corresponding LED + buzzer.
+4. **`NEW/sensor.ino`** — ESP32 sketch reading DHT22 (temp, pin 4) and SGP30 (CO2, SDA=18/SCL=19).
+   Outputs `"Temp,CO2"` CSV at 9600 baud every 5 s; `"READ_ERROR"` on sensor failure.
+   **Known issue:** `sgp.begin()` failure hangs the sketch in `while(1)` — check wiring if silent.
 
 **Serial protocol:** plain text at 9600 baud. ESP32 → laptop: `search`. Laptop → ESP32: `left` or `right`.
 
@@ -47,10 +54,10 @@ randomise all nodes (one fire node, rest normal/maybe-fire).
 
 **WSL only — attach USB first** (in Windows PowerShell as Admin):
 ```powershell
-usbipd bind --busid <BUSID>
-usbipd attach --wsl --busid <BUSID>
+usbipd list                          # find BUSID (CH340/CH343/CP210x)
+usbipd bind --busid <BUSID>          # one-time only — survives reboots
+usbipd attach --wsl --busid <BUSID>  # run each new session
 ```
-Find BUSID with `usbipd list` (look for CH340/CH343/CP210x).
 Add user to dialout group if needed: `sudo usermod -a -G dialout $USER` (requires new terminal).
 
 1. Upload `NEW/sketch_apr8a.ino` to the ESP32 via Arduino IDE.
@@ -198,7 +205,8 @@ MSE/
 ├── NEW/                             # Active Python implementation
 │   ├── mapnode20.py                 # Simulation engine + interactive matplotlib GUI
 │   ├── node7_controller.py          # Hardware controller for Node 7 (USB serial)
-│   └── sketch_apr8a.ino             # ESP32 sketch (button + LED + buzzer, 9600 baud)
+│   ├── sketch_apr8a.ino             # ESP32 sketch (button + LED + buzzer, 9600 baud)
+│   └── sensor.ino                   # ESP32 sketch (DHT22 + SGP30 sensor readings, 9600 baud)
 ├── esp32_gateway/
 │   ├── esp32_gateway.ino            # Tinkercad-compatible ESP32 sketch (legacy)
 │   └── speaker_and_led1.ino        # Node 5 variant with speaker + LED (legacy)
@@ -270,3 +278,6 @@ Java target: 17.
 - On WSL, ESP32 USB requires usbipd attach each session and `dialout` group membership.
 - `node7_controller.py` is hardcoded to Node 7. Generalising to other nodes requires extending
   the direction mapping logic (currently only exit 15 → `"left"`, else `"right"`).
+- `sensor.ino`: SGP30 expects `IAQmeasure()` called at 1 Hz for its baseline algorithm; current
+  5-second interval may degrade accuracy. Also, `sgp.begin()` failure hangs in `while(1)` —
+  consider a graceful fallback instead of halting.

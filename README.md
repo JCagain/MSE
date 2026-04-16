@@ -30,8 +30,13 @@ randomise all nodes with exactly one fire node.
 ### With ESP32 hardware (WSL)
 
 ```powershell
-# Windows PowerShell (Admin) — attach USB each session
+# Windows PowerShell (Admin) — find BUSID (look for CH340/CH343/CP210x)
+usbipd list
+
+# One-time only — survives reboots
 usbipd bind --busid <BUSID>
+
+# Run this every new session
 usbipd attach --wsl --busid <BUSID>
 ```
 
