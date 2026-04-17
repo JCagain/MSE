@@ -10,10 +10,13 @@ indicators (LED + buzzer) triggered by a button press.
 **Python-based. No Mega required.**
 
 ```
-[ESP32] ──USB serial── [Laptop / Python]
-  button press → "search"        mapnode20.py  — 16-node simulation, dual-path Dijkstra
-  ← "left" / "right"             node7_controller.py — hardware bridge for Node 7
-  LED + buzzer                   sketch_apr8a.ino — ESP32 firmware (9600 baud)
+[Sign ESP32]   ──USB (ttyACM1)── [Laptop / Python]
+  button press → "search"          mapnode20.py         — 16-node simulation, dual-path Dijkstra
+  ← "left" / "right"               node67_controller.py — hardware bridge (Node 7 sign + Node 6 sensor)
+  LED + buzzer                      sketch_apr8a.ino     — Sign ESP32 firmware (9600 baud)
+
+[Sensor ESP32] ──USB (ttyACM0)──/
+  "23.5,412" (temp°C, CO2 ppm)      sensor.ino           — Sensor ESP32 firmware (9600 baud)
 ```
 
 ### Quick Start (no hardware)
@@ -30,24 +33,35 @@ randomise all nodes with exactly one fire node.
 ### With ESP32 hardware (WSL)
 
 ```powershell
-# Windows PowerShell (Admin) — find BUSID (look for CH340/CH343/CP210x)
+# Windows PowerShell (Admin) — find BUSIDs (look for CH340/CH343/CP210x)
 usbipd list
 
-# One-time only — survives reboots
-usbipd bind --busid <BUSID>
+# One-time only per device — survives reboots
+usbipd bind --busid <BUSID-sign>    # Node 7 sign ESP
+usbipd bind --busid <BUSID-sensor>  # Node 6 sensor ESP
 
-# Run this every new session
-usbipd attach --wsl --busid <BUSID>
+# Run every new session
+usbipd attach --wsl --busid <BUSID-sign>
+usbipd attach --wsl --busid <BUSID-sensor>
 ```
+
+Both ESPs use the same CH343 chip (VID:PID `1a86:55d3`). Check the COM port numbers in Device
+Manager (or `usbipd list`) to tell them apart — the one already shared from a previous session is
+the sign ESP.
 
 ```bash
 # WSL — one-time group setup (requires new terminal after)
 sudo usermod -a -G dialout $USER
 
-.venv/bin/python NEW/node7_controller.py
+# Find your ports after attaching both ESPs
+ls /dev/ttyUSB* /dev/ttyACM*
+
+# Update PORT_SIGN / PORT_SENSOR at the top of node67_controller.py if needed, then:
+.venv/bin/python NEW/node67_controller.py
 ```
 
-Press the button on the ESP32 → laptop computes direction → LED blinks.
+- **Sign ESP32** (`sketch_apr8a.ino`, default `/dev/ttyACM1`) — button press triggers direction compute; receives `left`/`right`, blinks LED + buzzer.
+- **Sensor ESP32** (`sensor.ino`, default `/dev/ttyACM0`) — streams `temp,co2` CSV every 5 s; automatically sets Node 6's stage (NORMAL / MAYBE FIRE / FIRE). Optional — if not connected, Node 6 stays simulated.
 
 ---
 

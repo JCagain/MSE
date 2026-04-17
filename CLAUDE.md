@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Last Updated: 2026-04-16
+Last Updated: 2026-04-17
 
 ## Project Overview
 
@@ -10,26 +10,42 @@ MSE is a building-evacuation system. There are two implementations:
 
 ### Active implementation — Python (`NEW/`)
 
-Laptop runs all pathfinding. ESP32 acts as a button + indicator only.
+Laptop runs all pathfinding. Two ESP32s connect via USB serial.
 
 1. **`NEW/mapnode20.py`** — simulation engine. 16-node topology, per-node stage cycling
    (NORMAL / MAYBE FIRE / FIRE), dual-path Dijkstra via networkx, interactive matplotlib map.
    - Click a node → cycles its stage (NORMAL → MAYBE FIRE → FIRE → NORMAL)
    - "Generate Scenario" button → one random node set to FIRE, rest randomly NORMAL or MAYBE FIRE
    - Warning banner reflects the selected node's own stage
-2. **`NEW/node7_controller.py`** — hardware controller. Listens on USB serial for `"search"` from
-   the ESP32, runs the simulation for Node 7, sends `"left"` or `"right"` back, and redraws the map.
-   - Left panel: monospace table of all 16 nodes; rows highlighted yellow (MAYBE FIRE) or red (FIRE)
+2. **`NEW/node67_controller.py`** — hardware controller. Manages two ESP32s simultaneously:
+   - **Sign ESP** (Node 7, `PORT_SIGN` default `/dev/ttyACM1`, `sketch_apr8a.ino`): listens for
+     `"search"` button presses, sends `"left"`/`"right"` back, drives LED + buzzer
+   - **Sensor ESP** (Node 6, `PORT_SENSOR` default `/dev/ttyACM0`, `sensor.ino`): reads
+     `"temp,co2"` CSV and auto-sets Node 6's stage (NORMAL / MAYBE FIRE / FIRE); optional —
+     if not connected, Node 6 stays simulated
+   - `PUSH_INTERVAL = 5` constant at file top controls proactive push cadence (seconds)
+   - Left panel: monospace table — columns: Node, Temp(°C), CO2(ppm), Time(s), Cost, Path
+     (backup-path rows shown in blue text; BackupRoute column removed)
    - Top banner reflects Node 7's own stage (not global scenario)
    - SOS counter has a 2-second debounce to prevent button-bounce inflation
-   - Countdown timer (next 15-second push) shown at bottom-right, fontsize 16
-3. **`NEW/sketch_apr8a.ino`** — ESP32 sketch (9600 baud). Button press → sends `"search"` to
+   - Countdown timer shown at bottom-right, fontsize 16
+   - Scroll-wheel zoom on map axes; zoom persists across redraws
+   - Legend uses circular `mlines.Line2D` markers for nodes and colored lines for edges/paths
+   - Sensor-locked node (Node 6 when LIVE): manual click cycles direction but not stage
+3. **`NEW/sketch_apr8a.ino`** — Sign ESP32 sketch (9600 baud). Button press → sends `"search"` to
    laptop. Receives `"left"`/`"right"` → blinks the corresponding LED + buzzer.
-4. **`NEW/sensor.ino`** — ESP32 sketch reading DHT22 (temp, pin 4) and SGP30 (CO2, SDA=18/SCL=19).
-   Outputs `"Temp,CO2"` CSV at 9600 baud every 5 s; `"READ_ERROR"` on sensor failure.
+4. **`NEW/sensor.ino`** — Sensor ESP32 sketch reading DHT22 (temp, pin 4) and SGP30
+   (CO2, SDA=18/SCL=19). Outputs `"Temp,CO2"` CSV at 9600 baud every 5 s; `"READ_ERROR"` on
+   sensor failure.
    **Known issue:** `sgp.begin()` failure hangs the sketch in `while(1)` — check wiring if silent.
 
-**Serial protocol:** plain text at 9600 baud. ESP32 → laptop: `search`. Laptop → ESP32: `left` or `right`.
+**Serial protocol (active):** plain text at 9600 baud.
+- Sign ESP → laptop: `search`
+- Laptop → Sign ESP: `left` or `right`
+- Sensor ESP → laptop: `23.5,412` (temp°C, CO2 ppm CSV)
+
+**Both ESPs use CH343 chip, VID:PID `1a86:55d3`.** Tell them apart by COM port number in
+`usbipd list` / Device Manager — the one already shared from a prior session is the Sign ESP.
 
 ### Legacy Java app (`src/main/java/mse/`)
 
@@ -50,27 +66,29 @@ python3 -m venv .venv          # one-time
 Opens a matplotlib window. Click any node to cycle its stage; press "Generate Scenario" to
 randomise all nodes (one fire node, rest normal/maybe-fire).
 
-### Python hardware controller (ESP32 connected)
+### Python hardware controller (both ESP32s connected)
 
-**WSL only — attach USB first** (in Windows PowerShell as Admin):
+**WSL only — attach both USBs first** (in Windows PowerShell as Admin):
 ```powershell
-usbipd list                          # find BUSID (CH340/CH343/CP210x)
-usbipd bind --busid <BUSID>          # one-time only — survives reboots
-usbipd attach --wsl --busid <BUSID>  # run each new session
+usbipd list                                # find BUSIDs (CH343, VID:PID 1a86:55d3)
+usbipd bind --busid <BUSID-sign>           # one-time per device — survives reboots
+usbipd bind --busid <BUSID-sensor>
+usbipd attach --wsl --busid <BUSID-sign>   # each new session
+usbipd attach --wsl --busid <BUSID-sensor>
 ```
 Add user to dialout group if needed: `sudo usermod -a -G dialout $USER` (requires new terminal).
 
-1. Upload `NEW/sketch_apr8a.ino` to the ESP32 via Arduino IDE.
-2. Find the serial port: `ls /dev/ttyUSB* /dev/ttyACM*`
-3. Edit `PORT` at the top of `node7_controller.py` to match (macOS port is commented out).
+1. Upload `NEW/sketch_apr8a.ino` to the Sign ESP32 and `NEW/sensor.ino` to the Sensor ESP32.
+2. Find ports after attaching both: `ls /dev/ttyUSB* /dev/ttyACM*`
+3. Edit `PORT_SIGN` and `PORT_SENSOR` at the top of `node67_controller.py` if needed.
 4. Run:
 
 ```bash
-.venv/bin/python NEW/node7_controller.py
+.venv/bin/python NEW/node67_controller.py
 ```
 
-Press the button wired to pin 7 on the ESP32 → laptop computes evacuation direction for Node 7 →
-sends `"left"` or `"right"` back → ESP32 blinks the corresponding LED + buzzer.
+Sign ESP: button press → laptop computes direction → `"left"`/`"right"` → LED + buzzer.
+Sensor ESP: optional; if connected, real readings auto-set Node 6's stage every 5 s.
 
 ### Java app (legacy)
 
@@ -204,9 +222,10 @@ MSE/
 ├── sample-scenario.json             # Scripted demo scenario (fire spreading)
 ├── NEW/                             # Active Python implementation
 │   ├── mapnode20.py                 # Simulation engine + interactive matplotlib GUI
-│   ├── node7_controller.py          # Hardware controller for Node 7 (USB serial)
-│   ├── sketch_apr8a.ino             # ESP32 sketch (button + LED + buzzer, 9600 baud)
-│   └── sensor.ino                   # ESP32 sketch (DHT22 + SGP30 sensor readings, 9600 baud)
+│   ├── node67_controller.py         # Hardware controller — Sign ESP (node 7) + Sensor ESP (node 6)
+│   ├── node7_controller.py          # Superseded single-ESP controller (kept for reference)
+│   ├── sketch_apr8a.ino             # Sign ESP32 sketch (button + LED + buzzer, 9600 baud)
+│   └── sensor.ino                   # Sensor ESP32 sketch (DHT22 + SGP30, CSV output, 9600 baud)
 ├── esp32_gateway/
 │   ├── esp32_gateway.ino            # Tinkercad-compatible ESP32 sketch (legacy)
 │   └── speaker_and_led1.ino        # Node 5 variant with speaker + LED (legacy)
@@ -275,9 +294,13 @@ Java target: 17.
 
 - `SwingDashboard` (legacy Java) requires a display server. On WSL, enable WSLg (`wsl --update`
   in PowerShell) or run the jar from Windows PowerShell directly.
-- On WSL, ESP32 USB requires usbipd attach each session and `dialout` group membership.
-- `node7_controller.py` is hardcoded to Node 7. Generalising to other nodes requires extending
-  the direction mapping logic (currently only exit 15 → `"left"`, else `"right"`).
+- On WSL, both ESP32 USBs require usbipd attach each session and `dialout` group membership.
+- `node67_controller.py` direction logic for Node 7 is hardcoded: exit 15 → `"left"`, exit 16 →
+  `"right"`. Generalising to other sign nodes requires extending this mapping.
+- Both ESPs share VID:PID `1a86:55d3` (CH343). There is no programmatic way to tell them apart —
+  rely on COM port numbers in `usbipd list` / Device Manager to identify which is which.
 - `sensor.ino`: SGP30 expects `IAQmeasure()` called at 1 Hz for its baseline algorithm; current
   5-second interval may degrade accuracy. Also, `sgp.begin()` failure hangs in `while(1)` —
   consider a graceful fallback instead of halting.
+- `node7_controller.py` is the superseded single-ESP controller and can be removed once
+  `node67_controller.py` is confirmed stable in demo conditions.
