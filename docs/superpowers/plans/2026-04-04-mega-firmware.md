@@ -1,5 +1,7 @@
 # MEGA Firmware Implementation Plan
 
+> **STATUS (2026-04-17): This plan is SUPERSEDED and will not be executed.** The system reached its final form using the Python-only implementation in `NEW/` (mapnode20.py + node67_controller.py + two ESP32s via USB serial). The Arduino Mega was removed from the architecture. This plan is kept for reference only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Arduino Mega firmware that receives `routing`/`distress` packets from two directly-connected ESP32 nodes (Serial1 + Serial2), runs multi-source Dijkstra, sends `path_push` back to each node via its own serial port, and streams `state_snapshot` JSON to the laptop (Serial0/USB).

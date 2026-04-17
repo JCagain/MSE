@@ -77,7 +77,9 @@ def compute_node7_result():
             G_no_block.add_edge(u, v, weight=W)
         G_physical.add_edge(u, v, weight=L)
 
-    fire_nodes = {fire_node} if fire_node is not None else set()
+    fire_nodes = {n for n in sim.all_possible_exits if sim.node_stage.get(n) == 'FIRE'}
+    if fire_node is not None:
+        fire_nodes.add(fire_node)
     available_exits = [ex for ex in sim.all_possible_exits if ex not in fire_nodes]
     guide, exits = sim.compute_escape(G, G_physical, G_no_block, available_exits)
     _, main_path, main_cost, backup_path, backup_cost = guide[clicked_node]

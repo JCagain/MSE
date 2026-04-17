@@ -99,7 +99,7 @@ def _edge_data_from_state():
         is_fire_edge = (node_stage.get(a) == 'FIRE' or node_stage.get(b) == 'FIRE')
         et = round((node_temp[a] + node_temp[b]) / 2, 1)
         ec = round((node_co2[a]  + node_co2[b])  / 2, 1)
-        if is_fire_edge and (et > T_MAX or ec > C_MAX):
+        if is_fire_edge:
             eff_len = float('inf')
         else:
             eff_len = calculate_effective_length(physical_distances[(a,b)], et, ec, is_fire_edge)

@@ -4,6 +4,15 @@ target/
 # Git worktrees
 .worktrees/
 
+# Python virtualenv and cache
+.venv/
+__pycache__/
+*.pyc
+
+# Tool directories
+.claude/
+.serena/
+
 # Common IDE / OS artifacts
 .idea/
 *.iml

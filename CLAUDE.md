@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Last Updated: 2026-04-17
+Last Updated: 2026-04-17 (final version)
 
 ## Project Overview
 
@@ -17,12 +17,20 @@ Laptop runs all pathfinding. Two ESP32s connect via USB serial.
    - Click a node → cycles its stage (NORMAL → MAYBE FIRE → FIRE → NORMAL)
    - "Generate Scenario" button → one random node set to FIRE, rest randomly NORMAL or MAYBE FIRE
    - Warning banner reflects the selected node's own stage
+   - `_edge_data_from_state()`: any edge touching a FIRE node is immediately set to `eff_len = inf`,
+     bypassing the sensor-average logic. This prevents the averaging bug where a FIRE node (~90°C)
+     averaged with a NORMAL neighbor (~20°C) yielded ~55°C — below T_MAX (70°C) — leaving the edge
+     passable. FIRE-node edges are now always blocked regardless of averages.
 2. **`NEW/node67_controller.py`** — hardware controller. Manages two ESP32s simultaneously:
    - **Sign ESP** (Node 7, `PORT_SIGN` default `/dev/ttyACM1`, `sketch_apr8a.ino`): listens for
      `"search"` button presses, sends `"left"`/`"right"` back, drives LED + buzzer
    - **Sensor ESP** (Node 6, `PORT_SENSOR` default `/dev/ttyACM0`, `sensor.ino`): reads
      `"temp,co2"` CSV and auto-sets Node 6's stage (NORMAL / MAYBE FIRE / FIRE); optional —
      if not connected, Node 6 stays simulated
+   - `available_exits` filtering in `compute_node7_result()`: excludes ALL exit nodes whose
+     `sim.node_stage` is `'FIRE'`, not just the single `fire_node` returned by the scenario
+     generator. This fixes the bug where manually-cycled FIRE exits were still included as
+     reachable evacuation targets.
    - `PUSH_INTERVAL = 5` constant at file top controls proactive push cadence (seconds)
    - Left panel: monospace table — columns: Node, Temp(°C), CO2(ppm), Time(s), Cost, Path
      (backup-path rows shown in blue text; BackupRoute column removed)
@@ -290,7 +298,9 @@ Edges must be listed symmetrically (A lists B and B lists A with the same `edge_
 
 Java target: 17.
 
-## Known Issues / TODOs
+## Known Issues / Limitations (final version)
+
+This is the final version of the system. The items below are known limitations, not active TODOs.
 
 - `SwingDashboard` (legacy Java) requires a display server. On WSL, enable WSLg (`wsl --update`
   in PowerShell) or run the jar from Windows PowerShell directly.
@@ -300,7 +310,5 @@ Java target: 17.
 - Both ESPs share VID:PID `1a86:55d3` (CH343). There is no programmatic way to tell them apart —
   rely on COM port numbers in `usbipd list` / Device Manager to identify which is which.
 - `sensor.ino`: SGP30 expects `IAQmeasure()` called at 1 Hz for its baseline algorithm; current
-  5-second interval may degrade accuracy. Also, `sgp.begin()` failure hangs in `while(1)` —
-  consider a graceful fallback instead of halting.
-- `node7_controller.py` is the superseded single-ESP controller and can be removed once
-  `node67_controller.py` is confirmed stable in demo conditions.
+  5-second interval may degrade accuracy. Also, `sgp.begin()` failure hangs in `while(1)`.
+- `node7_controller.py` is the superseded single-ESP controller; kept for reference only.
